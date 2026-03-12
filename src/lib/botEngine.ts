@@ -3,7 +3,8 @@
 // ==========================================
 
 import type { Card, Suit, TrickCard } from '@/types/game';
-import { getCardStrength, RANK_ORDER } from '@/types/game';
+import { RANK_ORDER } from '@/types/game';
+import { getCardStrength } from '@/lib/gameRules';
 
 export type BotDifficulty = 'easy' | 'medium' | 'hard';
 
