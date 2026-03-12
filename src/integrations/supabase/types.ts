@@ -14,7 +14,148 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      game_state: {
+        Row: {
+          bids: Json
+          current_player_seat: number | null
+          current_trick: Json
+          dealer_seat: number
+          hands: Json
+          phase: Database["public"]["Enums"]["game_phase"]
+          room_id: string
+          round_index: number
+          round_num_cards: number | null
+          round_number: number
+          round_sequence: Json
+          scores: Json
+          tricks_played: Json
+          tricks_won: Json
+          trump_card: Json | null
+          trump_suit: Database["public"]["Enums"]["card_suit"] | null
+          updated_at: string
+        }
+        Insert: {
+          bids?: Json
+          current_player_seat?: number | null
+          current_trick?: Json
+          dealer_seat?: number
+          hands?: Json
+          phase?: Database["public"]["Enums"]["game_phase"]
+          room_id: string
+          round_index?: number
+          round_num_cards?: number | null
+          round_number?: number
+          round_sequence?: Json
+          scores?: Json
+          tricks_played?: Json
+          tricks_won?: Json
+          trump_card?: Json | null
+          trump_suit?: Database["public"]["Enums"]["card_suit"] | null
+          updated_at?: string
+        }
+        Update: {
+          bids?: Json
+          current_player_seat?: number | null
+          current_trick?: Json
+          dealer_seat?: number
+          hands?: Json
+          phase?: Database["public"]["Enums"]["game_phase"]
+          room_id?: string
+          round_index?: number
+          round_num_cards?: number | null
+          round_number?: number
+          round_sequence?: Json
+          scores?: Json
+          tricks_played?: Json
+          tricks_won?: Json
+          trump_card?: Json | null
+          trump_suit?: Database["public"]["Enums"]["card_suit"] | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "game_state_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: true
+            referencedRelation: "rooms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      room_players: {
+        Row: {
+          connected: boolean
+          created_at: string
+          id: string
+          is_bot: boolean
+          name: string
+          player_id: string
+          room_id: string
+          score: number
+          seat: number
+        }
+        Insert: {
+          connected?: boolean
+          created_at?: string
+          id?: string
+          is_bot?: boolean
+          name: string
+          player_id: string
+          room_id: string
+          score?: number
+          seat: number
+        }
+        Update: {
+          connected?: boolean
+          created_at?: string
+          id?: string
+          is_bot?: boolean
+          name?: string
+          player_id?: string
+          room_id?: string
+          score?: number
+          seat?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "room_players_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "rooms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rooms: {
+        Row: {
+          code: string
+          created_at: string
+          host_id: string
+          id: string
+          max_players: number
+          status: Database["public"]["Enums"]["room_status"]
+          updated_at: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          host_id: string
+          id?: string
+          max_players?: number
+          status?: Database["public"]["Enums"]["room_status"]
+          updated_at?: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          host_id?: string
+          id?: string
+          max_players?: number
+          status?: Database["public"]["Enums"]["room_status"]
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -23,7 +164,16 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      card_suit: "hearts" | "diamonds" | "clubs" | "spades"
+      game_phase:
+        | "waiting"
+        | "dealing"
+        | "bidding"
+        | "playing"
+        | "trick_end"
+        | "round_end"
+        | "game_over"
+      room_status: "waiting" | "in_progress" | "finished"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +300,18 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      card_suit: ["hearts", "diamonds", "clubs", "spades"],
+      game_phase: [
+        "waiting",
+        "dealing",
+        "bidding",
+        "playing",
+        "trick_end",
+        "round_end",
+        "game_over",
+      ],
+      room_status: ["waiting", "in_progress", "finished"],
+    },
   },
 } as const
