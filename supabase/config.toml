@@ -1,0 +1,13 @@
+project_id = "punhpjzkjbqxpcnygbvd"
+
+[functions.create-room]
+verify_jwt = false
+
+[functions.join-room]
+verify_jwt = false
+
+[functions.game-action]
+verify_jwt = false
+
+[functions.get-game-state]
+verify_jwt = false
