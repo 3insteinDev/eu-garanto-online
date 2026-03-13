@@ -6,7 +6,7 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-// ====== Card Types & Logic (inline to avoid import issues in edge functions) ======
+// ====== Card Types & Logic ======
 
 type Suit = "hearts" | "diamonds" | "clubs" | "spades";
 type Rank = "4" | "5" | "6" | "7" | "Q" | "J" | "K" | "A" | "2" | "3";
@@ -74,25 +74,136 @@ function getNextSeat(seat: number, numPlayers: number): number {
   return (seat + 1) % numPlayers;
 }
 
-// ====== Bot AI ======
+// ====== Enhanced Bot AI with Bluffing & Strategy ======
 
-function botDecideBid(hand: Card[], trumpSuit: Suit | null, numCards: number, forbiddenBid?: number): number {
-  let bid = 0;
+type BotPersonality = "aggressive" | "conservative" | "tricky";
+
+function getBotPersonality(botId: string): BotPersonality {
+  const hash = botId.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0);
+  const types: BotPersonality[] = ["aggressive", "conservative", "tricky"];
+  return types[hash % 3];
+}
+
+function getBluffChance(personality: BotPersonality): number {
+  switch (personality) {
+    case "aggressive": return 0.35;
+    case "conservative": return 0.10;
+    case "tricky": return 0.50;
+  }
+}
+
+function getCurrentWinnerStrength(trick: TrickCard[], trumpSuit: Suit | null): number {
+  if (trick.length === 0) return -1;
+  const leadSuit = trick[0].card.suit;
+  let bestStrength = -1;
+  for (const tc of trick) {
+    const isTrump = trumpSuit && tc.card.suit === trumpSuit;
+    const isLead = tc.card.suit === leadSuit;
+    const strength = getCardStrength(tc.card.rank);
+    let effective = -1;
+    if (isTrump) effective = strength + 20;
+    else if (isLead) effective = strength;
+    if (effective > bestStrength) bestStrength = effective;
+  }
+  return bestStrength;
+}
+
+function wouldCardWin(card: Card, trick: TrickCard[], trumpSuit: Suit | null): boolean {
+  if (trick.length === 0) return true;
+  const leadSuit = trick[0].card.suit;
+  const cardIsTrump = trumpSuit && card.suit === trumpSuit;
+  const cardStrength = getCardStrength(card.rank);
+  let cardEffective = -1;
+  if (cardIsTrump) cardEffective = cardStrength + 20;
+  else if (card.suit === leadSuit) cardEffective = cardStrength;
+  return cardEffective > getCurrentWinnerStrength(trick, trumpSuit);
+}
+
+function botDecideBid(
+  hand: Card[],
+  trumpSuit: Suit | null,
+  numCards: number,
+  forbiddenBid?: number,
+  botId?: string,
+  otherBids?: Record<string, number>
+): number {
+  const personality = getBotPersonality(botId || "default");
+  const bluffChance = getBluffChance(personality);
+
+  // Base bid: count strong cards
+  let baseBid = 0;
+  let trumpCount = 0;
+
   for (const card of hand) {
     const strength = getCardStrength(card.rank);
     const isTrump = trumpSuit && card.suit === trumpSuit;
-    if (isTrump && strength >= 5) bid++;
-    else if (strength >= 7) bid++;
+    if (isTrump) {
+      trumpCount++;
+      if (strength >= 4) baseBid++; // Trump K+
+    } else if (strength >= 7) {
+      baseBid++; // A, 2, 3
+    } else if (strength >= 6 && Math.random() > 0.5) {
+      baseBid++; // K sometimes
+    }
   }
-  bid = Math.min(bid, numCards);
+  baseBid = Math.min(baseBid, numCards);
+
+  // Bluffing logic
+  let bid = baseBid;
+  const isBluffing = Math.random() < bluffChance;
+
+  if (isBluffing) {
+    if (personality === "aggressive") {
+      bid = Math.min(baseBid + (Math.random() > 0.5 ? 2 : 1), numCards);
+    } else if (personality === "tricky") {
+      if (Math.random() > 0.5 && baseBid > 0) {
+        bid = Math.max(0, baseBid - 1);
+      } else {
+        bid = Math.min(baseBid + 1, numCards);
+      }
+    } else {
+      bid = Math.max(0, baseBid - 1);
+    }
+  }
+
+  // Adapt based on other players' bids
+  if (otherBids && Object.keys(otherBids).length > 0) {
+    const totalOtherBids = Object.values(otherBids).reduce((s, b) => s + b, 0);
+    if (totalOtherBids > numCards * 0.7 && personality !== "aggressive") {
+      bid = Math.max(0, bid - 1);
+    }
+    if (totalOtherBids < numCards * 0.3 && personality !== "conservative") {
+      bid = Math.min(bid + 1, numCards);
+    }
+  }
+
+  bid = Math.max(0, Math.min(bid, numCards));
+
+  // Dealer restriction
   if (forbiddenBid !== undefined && bid === forbiddenBid) {
-    bid = bid > 0 ? bid - 1 : bid + 1;
+    if (personality === "aggressive" && bid < numCards) {
+      bid = bid + 1;
+    } else if (bid > 0) {
+      bid = bid - 1;
+    } else {
+      bid = bid + 1;
+    }
     bid = Math.max(0, Math.min(bid, numCards));
   }
+
   return bid;
 }
 
-function botDecidePlay(hand: Card[], currentTrick: TrickCard[], trumpSuit: Suit | null, tricksWon: number, bid: number): Card {
+function botDecidePlay(
+  hand: Card[],
+  currentTrick: TrickCard[],
+  trumpSuit: Suit | null,
+  tricksWon: number,
+  bid: number,
+  botId?: string
+): Card {
+  const personality = getBotPersonality(botId || "default");
+
   let validCards = [...hand];
   if (currentTrick.length > 0) {
     const leadSuit = currentTrick[0].card.suit;
@@ -102,21 +213,59 @@ function botDecidePlay(hand: Card[], currentTrick: TrickCard[], trumpSuit: Suit 
   if (validCards.length === 1) return validCards[0];
 
   const needMore = tricksWon < bid;
-  if (needMore) {
-    // Play strongest
-    return validCards.reduce((best, c) => {
-      const bScore = getCardStrength(best.rank) + (trumpSuit && best.suit === trumpSuit ? 20 : 0);
-      const cScore = getCardStrength(c.rank) + (trumpSuit && c.suit === trumpSuit ? 20 : 0);
-      return cScore > bScore ? c : best;
-    });
-  } else {
-    // Play weakest
-    return validCards.reduce((best, c) => {
-      const bScore = getCardStrength(best.rank) + (trumpSuit && best.suit === trumpSuit ? 20 : 0);
-      const cScore = getCardStrength(c.rank) + (trumpSuit && c.suit === trumpSuit ? 20 : 0);
-      return cScore < bScore ? c : best;
-    });
-  }
+  const exactlyMet = tricksWon === bid;
+  const isLeading = currentTrick.length === 0;
+
+  const scored = validCards.map(card => {
+    let score = 0;
+    const strength = getCardStrength(card.rank);
+    const isTrump = trumpSuit && card.suit === trumpSuit;
+
+    if (needMore) {
+      if (isLeading) {
+        if (isTrump) {
+          score = strength + 10;
+          if (personality === "aggressive") score += 5;
+          if (hand.length > 2 && personality !== "aggressive") score -= 8;
+        } else {
+          score = strength;
+        }
+      } else {
+        const wins = wouldCardWin(card, currentTrick, trumpSuit);
+        if (wins) {
+          score = 20 + strength;
+          if (personality === "conservative") score = 20 - strength; // minimum winning card
+        } else {
+          score = -strength;
+          if (isTrump) score -= 20;
+        }
+      }
+    } else if (exactlyMet) {
+      // Need to LOSE remaining tricks
+      if (isLeading) {
+        score = -strength;
+        if (isTrump) score -= 20;
+      } else {
+        const wins = wouldCardWin(card, currentTrick, trumpSuit);
+        if (!wins) {
+          score = 10 - strength;
+        } else {
+          score = -20;
+        }
+      }
+    } else {
+      // Over bid, dump everything
+      score = -strength;
+      if (isTrump) score -= 20;
+    }
+
+    // Unpredictability factor
+    score += Math.random() * 2;
+    return { card, score };
+  });
+
+  scored.sort((a, b) => b.score - a.score);
+  return scored[0].card;
 }
 
 // ====== Main Handler ======
@@ -165,7 +314,6 @@ Deno.serve(async (req) => {
     const numPlayers = players.length;
     const playerIds = players.map((p: any) => p.player_id);
     const playerBySeat = Object.fromEntries(players.map((p: any) => [p.seat, p]));
-    const seatByPlayerId = Object.fromEntries(players.map((p: any) => [p.player_id, p.seat]));
 
     let newState = { ...state };
     let response: any = { success: true };
@@ -210,7 +358,6 @@ Deno.serve(async (req) => {
           scores: Object.fromEntries(playerIds.map((id: string) => [id, 0])),
         };
 
-        // Update room status
         await supabase.from("rooms").update({ status: "in_progress" }).eq("id", room_id);
         break;
       }
@@ -226,10 +373,8 @@ Deno.serve(async (req) => {
         const bid = action.bid;
         const numCards = state.round_num_cards;
 
-        // Validate bid
         if (bid < 0 || bid > numCards) throw new Error(`Aposta inválida (0-${numCards})`);
 
-        // Dealer restriction
         const bids = { ...state.bids };
         const dealerPlayer = playerBySeat[state.dealer_seat];
         if (currentPlayer.player_id === dealerPlayer.player_id) {
@@ -242,9 +387,7 @@ Deno.serve(async (req) => {
         bids[player_id] = bid;
         newState.bids = bids;
 
-        // Check if all bids placed
         if (Object.keys(bids).length === numPlayers) {
-          // Move to playing phase; first player after dealer leads
           const firstPlayer = getNextSeat(state.dealer_seat, numPlayers);
           newState.phase = "playing";
           newState.current_player_seat = firstPlayer;
@@ -265,11 +408,9 @@ Deno.serve(async (req) => {
         const card = action.card as Card;
         const hand: Card[] = state.hands[player_id] || [];
 
-        // Validate card in hand
         const cardIdx = hand.findIndex((c: Card) => c.suit === card.suit && c.rank === card.rank);
         if (cardIdx === -1) throw new Error("Carta não está na sua mão");
 
-        // Validate follow suit
         const trick: TrickCard[] = state.current_trick || [];
         if (trick.length > 0) {
           const leadSuit = trick[0].card.suit;
@@ -279,12 +420,10 @@ Deno.serve(async (req) => {
           }
         }
 
-        // Remove card from hand
         const newHand = [...hand];
         newHand.splice(cardIdx, 1);
         const newHands = { ...state.hands, [player_id]: newHand };
 
-        // Add to trick
         const newTrick: TrickCard[] = [
           ...trick,
           { player_id, seat: currentPlayer.seat, card },
@@ -292,7 +431,6 @@ Deno.serve(async (req) => {
 
         newState.hands = newHands;
 
-        // Check if trick is complete
         if (newTrick.length === numPlayers) {
           const winner = determineTrickWinner(newTrick, state.trump_suit);
           const tricksWon = { ...state.tricks_won };
@@ -304,12 +442,10 @@ Deno.serve(async (req) => {
           newState.tricks_played = tricksPlayed;
           newState.current_trick = [];
 
-          // Check if round is over (no more cards)
           const anyHand = Object.values(newHands) as Card[][];
           const cardsRemaining = anyHand.some((h: Card[]) => h.length > 0);
 
           if (!cardsRemaining) {
-            // Round over - calculate scores
             const bids = state.bids;
             const roundScores: Record<string, number> = {};
             const totalScores = { ...state.scores };
@@ -325,7 +461,6 @@ Deno.serve(async (req) => {
             newState.phase = "round_end";
             newState.current_player_seat = null;
 
-            // Update player scores in DB
             for (const p of players) {
               await supabase
                 .from("room_players")
@@ -335,7 +470,6 @@ Deno.serve(async (req) => {
 
             response.round_scores = roundScores;
           } else {
-            // Winner leads next trick
             newState.current_player_seat = winner.seat;
           }
         } else {
@@ -353,7 +487,6 @@ Deno.serve(async (req) => {
         const nextIdx = state.round_index + 1;
 
         if (nextIdx >= roundSeq.length) {
-          // Game over
           newState.phase = "game_over";
           await supabase.from("rooms").update({ status: "finished" }).eq("id", room_id);
           break;
@@ -432,7 +565,7 @@ Deno.serve(async (req) => {
       await processBotTurns(supabase, room_id, newState, players);
     }
 
-    // Reload final state to return
+    // Reload final state
     const { data: finalState } = await supabase
       .from("game_state")
       .select("*")
@@ -461,22 +594,21 @@ async function processBotTurns(supabase: any, roomId: string, state: any, player
   const playerBySeat = Object.fromEntries(players.map((p: any) => [p.seat, p]));
 
   let currentState = { ...state };
-  let maxIterations = numPlayers * 2; // Safety limit
+  let maxIterations = numPlayers * 2;
 
   while (maxIterations-- > 0) {
     const currentPlayer = playerBySeat[currentState.current_player_seat];
     if (!currentPlayer || !currentPlayer.is_bot) break;
     if (currentState.phase !== "bidding" && currentState.phase !== "playing") break;
 
-    // Small delay to simulate thinking
-    await new Promise((r) => setTimeout(r, 500));
+    // Simulate thinking time
+    await new Promise((r) => setTimeout(r, 400 + Math.random() * 600));
 
     if (currentState.phase === "bidding") {
       const hand: Card[] = currentState.hands[currentPlayer.player_id] || [];
       const numCards = currentState.round_num_cards;
       const bids = { ...currentState.bids };
 
-      // Check if dealer restriction applies
       let forbiddenBid: number | undefined;
       const dealerPlayer = playerBySeat[currentState.dealer_seat];
       if (currentPlayer.player_id === dealerPlayer.player_id) {
@@ -485,7 +617,14 @@ async function processBotTurns(supabase: any, roomId: string, state: any, player
         if (forbiddenBid < 0 || forbiddenBid > numCards) forbiddenBid = undefined;
       }
 
-      const bid = botDecideBid(hand, currentState.trump_suit, numCards, forbiddenBid);
+      const bid = botDecideBid(
+        hand,
+        currentState.trump_suit,
+        numCards,
+        forbiddenBid,
+        currentPlayer.player_id,
+        bids
+      );
       bids[currentPlayer.player_id] = bid;
       currentState.bids = bids;
 
@@ -501,9 +640,15 @@ async function processBotTurns(supabase: any, roomId: string, state: any, player
       const tricksWon = currentState.tricks_won[currentPlayer.player_id] || 0;
       const bid = currentState.bids[currentPlayer.player_id] || 0;
 
-      const card = botDecidePlay(hand, trick, currentState.trump_suit, tricksWon, bid);
+      const card = botDecidePlay(
+        hand,
+        trick,
+        currentState.trump_suit,
+        tricksWon,
+        bid,
+        currentPlayer.player_id
+      );
 
-      // Remove from hand
       const cardIdx = hand.findIndex((c: Card) => c.suit === card.suit && c.rank === card.rank);
       const newHand = [...hand];
       newHand.splice(cardIdx, 1);
@@ -524,7 +669,6 @@ async function processBotTurns(supabase: any, roomId: string, state: any, player
         const cardsRemaining = anyHand.some((h: Card[]) => h.length > 0);
 
         if (!cardsRemaining) {
-          // Round over
           const totalScores = { ...currentState.scores };
           for (const pid of playerIds) {
             const bidVal = currentState.bids[pid] ?? 0;
