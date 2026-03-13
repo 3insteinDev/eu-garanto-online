@@ -1,5 +1,7 @@
 // ==========================================
-// Eu Garanto - Bot AI Engine
+// Eu Garanto - Enhanced Bot AI Engine
+// Bots have personalities: aggressive, conservative, tricky
+// They bluff on bids and play strategically
 // ==========================================
 
 import type { Card, Suit, TrickCard } from '@/types/game';
@@ -7,53 +9,93 @@ import { RANK_ORDER } from '@/types/game';
 import { getCardStrength } from '@/lib/gameRules';
 
 export type BotDifficulty = 'easy' | 'medium' | 'hard';
+export type BotPersonality = 'aggressive' | 'conservative' | 'tricky';
 
-// ---- Bid Decision ----
+export function getBotPersonality(botId: string): BotPersonality {
+  const hash = botId.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
+  const types: BotPersonality[] = ['aggressive', 'conservative', 'tricky'];
+  return types[hash % 3];
+}
+
+function getBluffChance(personality: BotPersonality): number {
+  switch (personality) {
+    case 'aggressive': return 0.35;
+    case 'conservative': return 0.10;
+    case 'tricky': return 0.50;
+  }
+}
+
+// ---- Bid Decision with Bluffing ----
 
 export function decideBid(
   hand: Card[],
   trumpSuit: Suit | null,
   numCards: number,
   difficulty: BotDifficulty,
-  forbiddenBid?: number // dealer can't make sum = numCards
+  forbiddenBid?: number,
+  botId?: string,
+  otherBids?: Record<string, number>
 ): number {
-  let bid: number;
-
   if (difficulty === 'easy') {
-    bid = Math.floor(Math.random() * (numCards + 1));
-  } else {
-    // Medium/Hard: count strong cards
-    bid = 0;
-    for (const card of hand) {
-      const strength = getCardStrength(card.rank);
-      const isTrump = trumpSuit && card.suit === trumpSuit;
-
-      if (difficulty === 'medium') {
-        // Count trumps and high cards (A, 2, 3)
-        if (isTrump && strength >= 5) bid++;
-        else if (strength >= 7) bid++; // A, 2, 3
-      } else {
-        // Hard: more nuanced
-        if (isTrump) {
-          if (strength >= 4) bid++; // Trump K or higher
-        } else {
-          if (strength >= 8) bid++; // Only 2 or 3 of non-trump
-        }
-      }
+    let bid = Math.floor(Math.random() * (numCards + 1));
+    if (forbiddenBid !== undefined && bid === forbiddenBid) {
+      bid = bid > 0 ? bid - 1 : bid + 1;
+      bid = Math.max(0, Math.min(bid, numCards));
     }
-    bid = Math.min(bid, numCards);
+    return bid;
   }
 
-  // Respect dealer restriction
+  const personality = getBotPersonality(botId || 'default');
+  const bluffChance = getBluffChance(personality);
+
+  let baseBid = 0;
+  for (const card of hand) {
+    const strength = getCardStrength(card.rank);
+    const isTrump = trumpSuit && card.suit === trumpSuit;
+    if (isTrump && strength >= 4) baseBid++;
+    else if (strength >= 7) baseBid++;
+    else if (strength >= 6 && Math.random() > 0.5) baseBid++;
+  }
+  baseBid = Math.min(baseBid, numCards);
+
+  let bid = baseBid;
+  const isBluffing = Math.random() < bluffChance;
+
+  if (isBluffing) {
+    if (personality === 'aggressive') {
+      bid = Math.min(baseBid + (Math.random() > 0.5 ? 2 : 1), numCards);
+    } else if (personality === 'tricky') {
+      bid = Math.random() > 0.5 && baseBid > 0
+        ? Math.max(0, baseBid - 1)
+        : Math.min(baseBid + 1, numCards);
+    } else {
+      bid = Math.max(0, baseBid - 1);
+    }
+  }
+
+  if (otherBids && Object.keys(otherBids).length > 0) {
+    const totalOtherBids = Object.values(otherBids).reduce((s, b) => s + b, 0);
+    if (totalOtherBids > numCards * 0.7 && personality !== 'aggressive') {
+      bid = Math.max(0, bid - 1);
+    }
+    if (totalOtherBids < numCards * 0.3 && personality !== 'conservative') {
+      bid = Math.min(bid + 1, numCards);
+    }
+  }
+
+  bid = Math.max(0, Math.min(bid, numCards));
+
   if (forbiddenBid !== undefined && bid === forbiddenBid) {
-    bid = bid > 0 ? bid - 1 : bid + 1;
+    if (personality === 'aggressive' && bid < numCards) bid++;
+    else if (bid > 0) bid--;
+    else bid++;
     bid = Math.max(0, Math.min(bid, numCards));
   }
 
   return bid;
 }
 
-// ---- Card Play Decision ----
+// ---- Card Play Decision with Strategy ----
 
 export function decidePlay(
   hand: Card[],
@@ -61,55 +103,78 @@ export function decidePlay(
   trumpSuit: Suit | null,
   tricksWon: number,
   bid: number,
-  difficulty: BotDifficulty
+  difficulty: BotDifficulty,
+  botId?: string
 ): Card {
   const validCards = getValidCards(hand, currentTrick);
-
   if (validCards.length === 1) return validCards[0];
 
   if (difficulty === 'easy') {
     return validCards[Math.floor(Math.random() * validCards.length)];
   }
 
-  const needMoreTricks = tricksWon < bid;
+  const personality = getBotPersonality(botId || 'default');
+  const needMore = tricksWon < bid;
+  const exactlyMet = tricksWon === bid;
+  const isLeading = currentTrick.length === 0;
 
-  if (needMoreTricks) {
-    // Try to win: play strongest valid card
-    return pickStrongest(validCards, trumpSuit, currentTrick);
-  } else {
-    // Don't need more: play weakest
-    return pickWeakest(validCards, trumpSuit);
-  }
+  const scored = validCards.map(card => {
+    let score = 0;
+    const strength = getCardStrength(card.rank);
+    const isTrump = trumpSuit && card.suit === trumpSuit;
+
+    if (needMore) {
+      if (isLeading) {
+        score = isTrump ? strength + 10 + (personality === 'aggressive' ? 5 : -8) : strength;
+      } else {
+        const wins = wouldCardWin(card, currentTrick, trumpSuit);
+        score = wins ? 20 + (personality === 'conservative' ? -strength : strength) : -strength - (isTrump ? 20 : 0);
+      }
+    } else if (exactlyMet) {
+      if (isLeading) {
+        score = -strength - (isTrump ? 20 : 0);
+      } else {
+        const wins = wouldCardWin(card, currentTrick, trumpSuit);
+        score = wins ? -20 : 10 - strength;
+      }
+    } else {
+      score = -strength - (isTrump ? 20 : 0);
+    }
+
+    score += Math.random() * 2;
+    return { card, score };
+  });
+
+  scored.sort((a, b) => b.score - a.score);
+  return scored[0].card;
 }
 
 function getValidCards(hand: Card[], currentTrick: TrickCard[]): Card[] {
   if (currentTrick.length === 0) return [...hand];
-
   const leadSuit = currentTrick[0].card.suit;
   const suitCards = hand.filter(c => c.suit === leadSuit);
-
   return suitCards.length > 0 ? suitCards : [...hand];
 }
 
-function pickStrongest(cards: Card[], trumpSuit: Suit | null, trick: TrickCard[]): Card {
-  return cards.reduce((best, card) => {
-    const bestScore = cardScore(best, trumpSuit, trick);
-    const cardScoreVal = cardScore(card, trumpSuit, trick);
-    return cardScoreVal > bestScore ? card : best;
-  });
+function getCurrentWinnerStrength(trick: TrickCard[], trumpSuit: Suit | null): number {
+  if (trick.length === 0) return -1;
+  const leadSuit = trick[0].card.suit;
+  let best = -1;
+  for (const tc of trick) {
+    const isTrump = trumpSuit && tc.card.suit === trumpSuit;
+    const isLead = tc.card.suit === leadSuit;
+    const str = getCardStrength(tc.card.rank);
+    const eff = isTrump ? str + 20 : isLead ? str : -1;
+    if (eff > best) best = eff;
+  }
+  return best;
 }
 
-function pickWeakest(cards: Card[], trumpSuit: Suit | null): Card {
-  return cards.reduce((weakest, card) => {
-    const weakScore = getCardStrength(weakest.rank) + (trumpSuit && weakest.suit === trumpSuit ? 20 : 0);
-    const cardScoreVal = getCardStrength(card.rank) + (trumpSuit && card.suit === trumpSuit ? 20 : 0);
-    return cardScoreVal < weakScore ? card : weakest;
-  });
-}
-
-function cardScore(card: Card, trumpSuit: Suit | null, trick: TrickCard[]): number {
-  let score = getCardStrength(card.rank);
-  if (trumpSuit && card.suit === trumpSuit) score += 20;
-  if (trick.length > 0 && card.suit === trick[0].card.suit) score += 10;
-  return score;
+function wouldCardWin(card: Card, trick: TrickCard[], trumpSuit: Suit | null): boolean {
+  if (trick.length === 0) return true;
+  const leadSuit = trick[0].card.suit;
+  const isTrump = trumpSuit && card.suit === trumpSuit;
+  const str = getCardStrength(card.rank);
+  const eff = isTrump ? str + 20 : card.suit === leadSuit ? str : -1;
+  return eff > getCurrentWinnerStrength(trick, trumpSuit);
 }
