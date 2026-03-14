@@ -436,45 +436,63 @@ Deno.serve(async (req) => {
           const tricksWon = { ...state.tricks_won };
           tricksWon[winner.player_id] = (tricksWon[winner.player_id] || 0) + 1;
 
-          const tricksPlayed = [...(state.tricks_played || []), newTrick];
-
           newState.tricks_won = tricksWon;
-          newState.tricks_played = tricksPlayed;
-          newState.current_trick = [];
+          // Keep the completed trick visible, set phase to trick_end
+          newState.current_trick = newTrick;
+          newState.phase = "trick_end";
+          // Use current_player_seat to indicate the winner's seat
+          newState.current_player_seat = winner.seat;
 
-          const anyHand = Object.values(newHands) as Card[][];
-          const cardsRemaining = anyHand.some((h: Card[]) => h.length > 0);
-
-          if (!cardsRemaining) {
-            const bids = state.bids;
-            const roundScores: Record<string, number> = {};
-            const totalScores = { ...state.scores };
-
-            for (const pid of playerIds) {
-              const bidVal = bids[pid] ?? 0;
-              const won = tricksWon[pid] ?? 0;
-              roundScores[pid] = won === bidVal ? 10 + bidVal : 0;
-              totalScores[pid] = (totalScores[pid] || 0) + roundScores[pid];
-            }
-
-            newState.scores = totalScores;
-            newState.phase = "round_end";
-            newState.current_player_seat = null;
-
-            for (const p of players) {
-              await supabase
-                .from("room_players")
-                .update({ score: totalScores[p.player_id] || 0 })
-                .eq("id", p.id);
-            }
-
-            response.round_scores = roundScores;
-          } else {
-            newState.current_player_seat = winner.seat;
-          }
+          response.trick_winner = winner.player_id;
         } else {
           newState.current_trick = newTrick;
           newState.current_player_seat = getNextSeat(state.current_player_seat, numPlayers);
+        }
+        break;
+      }
+
+      // ============ NEXT TRICK (resolve trick_end) ============
+      case "next_trick": {
+        if (state.phase !== "trick_end") throw new Error("Não é fase de fim de vaza");
+
+        const trickWinnerSeat = state.current_player_seat;
+        const completedTrick = state.current_trick || [];
+        const tricksPlayed = [...(state.tricks_played || []), completedTrick];
+
+        newState.tricks_played = tricksPlayed;
+        newState.current_trick = [];
+
+        const anyHand = Object.values(state.hands) as Card[][];
+        const cardsRemaining = anyHand.some((h: Card[]) => h.length > 0);
+
+        if (!cardsRemaining) {
+          const bids = state.bids;
+          const tricksWon = state.tricks_won;
+          const roundScores: Record<string, number> = {};
+          const totalScores = { ...state.scores };
+
+          for (const pid of playerIds) {
+            const bidVal = bids[pid] ?? 0;
+            const won = tricksWon[pid] ?? 0;
+            roundScores[pid] = won === bidVal ? 10 + bidVal : 0;
+            totalScores[pid] = (totalScores[pid] || 0) + roundScores[pid];
+          }
+
+          newState.scores = totalScores;
+          newState.phase = "round_end";
+          newState.current_player_seat = null;
+
+          for (const p of players) {
+            await supabase
+              .from("room_players")
+              .update({ score: totalScores[p.player_id] || 0 })
+              .eq("id", p.id);
+          }
+
+          response.round_scores = roundScores;
+        } else {
+          newState.phase = "playing";
+          newState.current_player_seat = trickWinnerSeat;
         }
         break;
       }
