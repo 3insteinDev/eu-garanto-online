@@ -31,7 +31,21 @@ export function GameTable({ roomId, playerId, gameState, players, onRefresh, onL
 
   const myPlayer = players.find(p => p.player_id === playerId);
   const currentPlayer = players.find(p => p.seat === gameState.current_player_seat);
-  const isMyTurn = currentPlayer?.player_id === playerId;
+  const isTrickEnd = gameState.phase === 'trick_end';
+  const isMyTurn = !isTrickEnd && currentPlayer?.player_id === playerId;
+
+  // Auto-advance trick_end after 2 seconds
+  useEffect(() => {
+    if (gameState.phase !== 'trick_end') return;
+    const timer = setTimeout(async () => {
+      try {
+        await api.nextTrick(roomId, playerId);
+      } catch {
+        // another player may have already advanced
+      }
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [gameState.phase, roomId, playerId, api]);
 
   // Detect phase transition to round_end -> show overlay
   useEffect(() => {
