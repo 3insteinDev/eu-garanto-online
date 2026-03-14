@@ -594,15 +594,21 @@ async function processBotTurns(supabase: any, roomId: string, state: any, player
   const playerBySeat = Object.fromEntries(players.map((p: any) => [p.seat, p]));
 
   let currentState = { ...state };
-  let maxIterations = numPlayers * 2;
+  // Allow enough iterations for all bots to play all their cards + bids
+  const maxCards = currentState.round_num_cards || 1;
+  let maxIterations = numPlayers * (maxCards + 1) + 2;
+  const startTime = Date.now();
 
   while (maxIterations-- > 0) {
+    // Safety timeout: 25 seconds max for bot processing
+    if (Date.now() - startTime > 25000) break;
+
     const currentPlayer = playerBySeat[currentState.current_player_seat];
     if (!currentPlayer || !currentPlayer.is_bot) break;
     if (currentState.phase !== "bidding" && currentState.phase !== "playing") break;
 
-    // Simulate thinking time
-    await new Promise((r) => setTimeout(r, 400 + Math.random() * 600));
+    // Simulate thinking time (faster to avoid timeouts)
+    await new Promise((r) => setTimeout(r, 200 + Math.random() * 400));
 
     if (currentState.phase === "bidding") {
       const hand: Card[] = currentState.hands[currentPlayer.player_id] || [];
