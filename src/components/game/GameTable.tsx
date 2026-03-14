@@ -230,6 +230,8 @@ export function GameTable({ roomId, playerId, gameState, players, onRefresh, onL
             <TrickArea
               currentTrick={(gameState.current_trick || []) as any}
               players={players}
+              winnerSeat={isTrickEnd ? gameState.current_player_seat : undefined}
+              isTrickEnd={isTrickEnd}
             />
           )}
 
