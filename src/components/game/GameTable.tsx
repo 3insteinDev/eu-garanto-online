@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import type { Card as CardType, Player, PublicGameState, Suit } from '@/types/game';
 import { useGameApi } from '@/hooks/useGameApi';
 import { PlayerHand } from './PlayerHand';
@@ -7,6 +7,7 @@ import { BidPanel } from './BidPanel';
 import { ScoreBoard } from './ScoreBoard';
 import { TrickHistory } from './TrickHistory';
 import { PlayingCard } from './PlayingCard';
+import { RoundResultOverlay } from './RoundResultOverlay';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 
@@ -16,24 +17,43 @@ interface GameTableProps {
   gameState: PublicGameState;
   players: Player[];
   onRefresh: () => void;
+  onLeave: () => void;
 }
 
-const suitLabel: Record<Suit, string> = {
-  hearts: '♥ Copas',
-  diamonds: '♦ Ouros',
-  clubs: '♣ Paus',
-  spades: '♠ Espadas',
-};
-
-export function GameTable({ roomId, playerId, gameState, players, onRefresh }: GameTableProps) {
+export function GameTable({ roomId, playerId, gameState, players, onRefresh, onLeave }: GameTableProps) {
   const api = useGameApi();
   const [selectedCard, setSelectedCard] = useState<CardType | null>(null);
   const [loading, setLoading] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [showRoundResult, setShowRoundResult] = useState(false);
+  const prevPhaseRef = useRef(gameState.phase);
+  const roundResultDataRef = useRef<{ bids: Record<string, number>; tricksWon: Record<string, number> } | null>(null);
 
   const myPlayer = players.find(p => p.player_id === playerId);
   const currentPlayer = players.find(p => p.seat === gameState.current_player_seat);
   const isMyTurn = currentPlayer?.player_id === playerId;
+
+  // Detect phase transition to round_end -> show overlay
+  useEffect(() => {
+    if (prevPhaseRef.current !== 'round_end' && gameState.phase === 'round_end') {
+      roundResultDataRef.current = {
+        bids: gameState.bids as Record<string, number>,
+        tricksWon: gameState.tricks_won as Record<string, number>,
+      };
+      setShowRoundResult(true);
+    }
+    prevPhaseRef.current = gameState.phase;
+  }, [gameState.phase, gameState.bids, gameState.tricks_won]);
+
+  const handleRoundResultDismiss = useCallback(async () => {
+    setShowRoundResult(false);
+    // Auto-advance to next round
+    try {
+      await api.nextRound(roomId, playerId);
+    } catch {
+      // another player may have already advanced
+    }
+  }, [roomId, playerId, api]);
 
   const handleBid = async (bid: number) => {
     setLoading(true);
@@ -84,6 +104,16 @@ export function GameTable({ roomId, playerId, gameState, players, onRefresh }: G
 
   return (
     <div className="min-h-screen flex flex-col">
+      {/* Round result overlay */}
+      {showRoundResult && roundResultDataRef.current && (
+        <RoundResultOverlay
+          players={players}
+          bids={roundResultDataRef.current.bids}
+          tricksWon={roundResultDataRef.current.tricksWon}
+          onDismiss={handleRoundResultDismiss}
+        />
+      )}
+
       {/* Top bar */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-card/50">
         <div className="flex items-center gap-4">
@@ -101,6 +131,9 @@ export function GameTable({ roomId, playerId, gameState, players, onRefresh }: G
           )}
           <Button variant="ghost" size="sm" onClick={() => setShowHistory(!showHistory)}>
             {showHistory ? 'Mesa' : 'Histórico'}
+          </Button>
+          <Button variant="ghost" size="sm" onClick={onLeave} className="text-muted-foreground">
+            Sair
           </Button>
         </div>
       </div>
@@ -146,7 +179,7 @@ export function GameTable({ roomId, playerId, gameState, players, onRefresh }: G
                 )}
               </p>
             )}
-            {gameState.phase === 'round_end' && (
+            {gameState.phase === 'round_end' && !showRoundResult && (
               <div className="space-y-2">
                 <p className="text-2xl text-primary">Rodada Encerrada!</p>
                 <Button onClick={handleNextRound} disabled={loading}>
@@ -165,6 +198,9 @@ export function GameTable({ roomId, playerId, gameState, players, onRefresh }: G
                     <p className="text-xl">🏆 {winner.name} venceu com {scores[winnerId]} pontos!</p>
                   ) : null;
                 })()}
+                <Button variant="secondary" onClick={onLeave}>
+                  Voltar ao Lobby
+                </Button>
               </div>
             )}
           </div>

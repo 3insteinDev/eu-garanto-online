@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { usePlayerId, usePlayerName } from '@/hooks/usePlayerId';
+import { useActiveRoom } from '@/hooks/useActiveRoom';
 import { useGameApi } from '@/hooks/useGameApi';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -14,6 +15,7 @@ export default function RoomPage() {
   const navigate = useNavigate();
   const playerId = usePlayerId();
   const [playerName] = usePlayerName();
+  const { setActiveRoom } = useActiveRoom();
   const api = useGameApi();
 
   const [players, setPlayers] = useState<Player[]>([]);
@@ -33,25 +35,28 @@ export default function RoomPage() {
     }
   }, [roomId, playerId]);
 
+  // Track active room
+  useEffect(() => {
+    if (roomId && roomCode) {
+      setActiveRoom({ roomId, roomCode });
+    }
+  }, [roomId, roomCode]);
+
   // Initial load
   useEffect(() => {
     if (!roomId) return;
-
-    // Get room info
     supabase.from('rooms').select('*').eq('id', roomId).single().then(({ data }) => {
       if (data) {
         setRoomCode(data.code);
         setHostId(data.host_id);
       }
     });
-
     fetchState();
   }, [roomId, fetchState]);
 
   // Realtime subscription
   useEffect(() => {
     if (!roomId) return;
-
     const channel = supabase
       .channel(`room-${roomId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'game_state', filter: `room_id=eq.${roomId}` }, () => {
@@ -61,10 +66,7 @@ export default function RoomPage() {
         fetchState();
       })
       .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return () => { supabase.removeChannel(channel); };
   }, [roomId, fetchState]);
 
   const handleStartGame = async () => {
@@ -91,6 +93,11 @@ export default function RoomPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleLeave = () => {
+    setActiveRoom(null);
+    navigate('/');
   };
 
   const isHost = playerId === hostId;
@@ -143,7 +150,7 @@ export default function RoomPage() {
             </div>
           )}
 
-          <Button variant="ghost" onClick={() => navigate('/')} className="w-full text-muted-foreground">
+          <Button variant="ghost" onClick={handleLeave} className="w-full text-muted-foreground">
             ← Voltar ao Lobby
           </Button>
         </div>
@@ -158,6 +165,7 @@ export default function RoomPage() {
       gameState={gameState}
       players={players}
       onRefresh={fetchState}
+      onLeave={handleLeave}
     />
   );
 }
