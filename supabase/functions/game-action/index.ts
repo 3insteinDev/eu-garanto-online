@@ -579,7 +579,7 @@ Deno.serve(async (req) => {
       .eq("room_id", room_id);
 
     // ====== Process bot turns automatically ======
-    if (newState.phase === "bidding" || newState.phase === "playing") {
+    if (newState.phase === "bidding" || newState.phase === "playing" || newState.phase === "trick_end") {
       await processBotTurns(supabase, room_id, newState, players);
     }
 
