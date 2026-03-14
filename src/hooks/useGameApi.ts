@@ -35,5 +35,8 @@ export function useGameApi() {
   const nextRound = (roomId: string, playerId: string) =>
     gameAction(roomId, playerId, { type: 'next_round' });
 
-  return { createRoom, joinRoom, getGameState, startGame, placeBid, playCard, addBot, nextRound };
+  const nextTrick = (roomId: string, playerId: string) =>
+    gameAction(roomId, playerId, { type: 'next_trick' });
+
+  return { createRoom, joinRoom, getGameState, startGame, placeBid, playCard, addBot, nextRound, nextTrick };
 }
