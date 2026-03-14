@@ -594,7 +594,10 @@ async function processBotTurns(supabase: any, roomId: string, state: any, player
   const playerBySeat = Object.fromEntries(players.map((p: any) => [p.seat, p]));
 
   let currentState = { ...state };
-  let maxIterations = numPlayers * 2;
+  // Allow enough iterations for all bots to play all their cards + bids
+  const maxCards = currentState.round_num_cards || 1;
+  let maxIterations = numPlayers * (maxCards + 1) + 2;
+  const startTime = Date.now();
 
   while (maxIterations-- > 0) {
     const currentPlayer = playerBySeat[currentState.current_player_seat];
