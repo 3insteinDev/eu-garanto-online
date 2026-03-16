@@ -8,6 +8,7 @@ import { useActiveRoom } from '@/hooks/useActiveRoom';
 import { useGameApi } from '@/hooks/useGameApi';
 import { toast } from 'sonner';
 import { TutorialOverlay, shouldShowTutorial } from '@/components/game/TutorialOverlay';
+import type { GameMode } from '@/types/game';
 
 export default function LobbyPage() {
   const navigate = useNavigate();
@@ -18,6 +19,7 @@ export default function LobbyPage() {
   const { activeRoom } = useActiveRoom();
   const api = useGameApi();
   const [showTutorial, setShowTutorial] = useState(shouldShowTutorial);
+  const [gameMode, setGameMode] = useState<GameMode>('classic');
 
   const handleCreate = async () => {
     if (!playerName.trim()) {
@@ -26,7 +28,7 @@ export default function LobbyPage() {
     }
     setLoading(true);
     try {
-      const data = await api.createRoom(playerId, playerName.trim());
+      const data = await api.createRoom(playerId, playerName.trim(), 4, gameMode);
       navigate(`/room/${data.room.id}`);
     } catch (e: any) {
       toast.error(e.message || 'Erro ao criar sala');
@@ -97,7 +99,39 @@ export default function LobbyPage() {
           <CardHeader>
             <CardTitle className="text-2xl text-primary">Criar Partida</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
+            {/* Game mode selector */}
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-muted-foreground">Modo de Jogo</p>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => setGameMode('classic')}
+                  className={`p-3 rounded-lg border text-left transition-all ${
+                    gameMode === 'classic'
+                      ? 'border-primary bg-primary/10 ring-2 ring-primary/30'
+                      : 'border-border hover:border-primary/50'
+                  }`}
+                >
+                  <span className="block font-semibold text-sm">🃏 Clássico</span>
+                  <span className="block text-xs text-muted-foreground mt-1">
+                    Trunfo pelo naipe da carta virada
+                  </span>
+                </button>
+                <button
+                  onClick={() => setGameMode('manilha')}
+                  className={`p-3 rounded-lg border text-left transition-all ${
+                    gameMode === 'manilha'
+                      ? 'border-primary bg-primary/10 ring-2 ring-primary/30'
+                      : 'border-border hover:border-primary/50'
+                  }`}
+                >
+                  <span className="block font-semibold text-sm">🔥 Manilha</span>
+                  <span className="block text-xs text-muted-foreground mt-1">
+                    Trunfo estilo truco com manilhas
+                  </span>
+                </button>
+              </div>
+            </div>
             <Button onClick={handleCreate} disabled={loading} className="w-full text-lg h-12">
               {loading ? 'Criando...' : 'Criar Nova Sala'}
             </Button>

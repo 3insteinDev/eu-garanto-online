@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import type { Card as CardType, Player, PublicGameState, Suit } from '@/types/game';
+import type { Card as CardType, Player, PublicGameState, Suit, GameMode } from '@/types/game';
+import { RANK_ORDER, MANILHA_SUIT_ORDER } from '@/types/game';
 import { useGameApi } from '@/hooks/useGameApi';
 import { PlayerHand } from './PlayerHand';
 import { TrickArea } from './TrickArea';
@@ -18,9 +19,10 @@ interface GameTableProps {
   players: Player[];
   onRefresh: () => void;
   onLeave: () => void;
+  gameMode?: GameMode;
 }
 
-export function GameTable({ roomId, playerId, gameState, players, onRefresh, onLeave }: GameTableProps) {
+export function GameTable({ roomId, playerId, gameState, players, onRefresh, onLeave, gameMode = 'classic' }: GameTableProps) {
   const api = useGameApi();
   const [selectedCard, setSelectedCard] = useState<CardType | null>(null);
   const [loading, setLoading] = useState(false);
@@ -28,16 +30,27 @@ export function GameTable({ roomId, playerId, gameState, players, onRefresh, onL
   const [showRoundResult, setShowRoundResult] = useState(false);
   const prevPhaseRef = useRef(gameState.phase);
   const roundResultDataRef = useRef<{ bids: Record<string, number>; tricksWon: Record<string, number> } | null>(null);
+  const nextTrickCalledRef = useRef(false);
 
   const myPlayer = players.find(p => p.player_id === playerId);
   const currentPlayer = players.find(p => p.seat === gameState.current_player_seat);
   const isTrickEnd = gameState.phase === 'trick_end';
   const isMyTurn = !isTrickEnd && currentPlayer?.player_id === playerId;
 
-  // Auto-advance trick_end after 2 seconds
+  // Compute manilha rank for display
+  const manilhaRank = gameMode === 'manilha' && gameState.trump_card
+    ? RANK_ORDER[(RANK_ORDER.indexOf(gameState.trump_card.rank as any) + 1) % RANK_ORDER.length]
+    : null;
+
+  // Auto-advance trick_end after 2 seconds (with guard against double-fire)
   useEffect(() => {
-    if (gameState.phase !== 'trick_end') return;
+    if (gameState.phase !== 'trick_end') {
+      nextTrickCalledRef.current = false;
+      return;
+    }
     const timer = setTimeout(async () => {
+      if (nextTrickCalledRef.current) return;
+      nextTrickCalledRef.current = true;
       try {
         await api.nextTrick(roomId, playerId);
       } catch {
@@ -61,7 +74,6 @@ export function GameTable({ roomId, playerId, gameState, players, onRefresh, onL
 
   const handleRoundResultDismiss = useCallback(async () => {
     setShowRoundResult(false);
-    // Auto-advance to next round
     try {
       await api.nextRound(roomId, playerId);
     } catch {
@@ -116,6 +128,8 @@ export function GameTable({ roomId, playerId, gameState, players, onRefresh, onL
     }
   }
 
+  const modeLabel = gameMode === 'manilha' ? '🔥 Manilha' : '🃏 Clássico';
+
   return (
     <div className="min-h-screen flex flex-col">
       {/* Round result overlay */}
@@ -135,12 +149,18 @@ export function GameTable({ roomId, playerId, gameState, players, onRefresh, onL
           <span className="text-sm text-muted-foreground">
             Rodada {gameState.round_number} • {gameState.round_num_cards} carta{(gameState.round_num_cards ?? 0) > 1 ? 's' : ''}
           </span>
+          <span className="text-xs px-2 py-0.5 rounded bg-secondary text-secondary-foreground">
+            {modeLabel}
+          </span>
         </div>
         <div className="flex items-center gap-2">
           {gameState.trump_card && (
             <div className="flex items-center gap-1 text-sm">
               <span className="text-muted-foreground">Trunfo:</span>
               <PlayingCard card={gameState.trump_card} disabled small />
+              {manilhaRank && (
+                <span className="text-xs text-primary ml-1">(Manilha: {manilhaRank})</span>
+              )}
             </div>
           )}
           <Button variant="ghost" size="sm" onClick={() => setShowHistory(!showHistory)}>

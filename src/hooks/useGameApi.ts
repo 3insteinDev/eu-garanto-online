@@ -1,5 +1,5 @@
 import { supabase } from '@/integrations/supabase/client';
-import type { Card } from '@/types/game';
+import type { Card, GameMode } from '@/types/game';
 
 async function invoke(fn: string, body: Record<string, unknown>) {
   const { data, error } = await supabase.functions.invoke(fn, { body });
@@ -8,8 +8,8 @@ async function invoke(fn: string, body: Record<string, unknown>) {
 }
 
 export function useGameApi() {
-  const createRoom = (hostId: string, hostName: string, maxPlayers = 4) =>
-    invoke('create-room', { host_id: hostId, host_name: hostName, max_players: maxPlayers });
+  const createRoom = (hostId: string, hostName: string, maxPlayers = 4, gameMode: GameMode = 'classic') =>
+    invoke('create-room', { host_id: hostId, host_name: hostName, max_players: maxPlayers, game_mode: gameMode });
 
   const joinRoom = (roomCode: string, playerId: string, playerName: string) =>
     invoke('join-room', { room_code: roomCode, player_id: playerId, player_name: playerName });
