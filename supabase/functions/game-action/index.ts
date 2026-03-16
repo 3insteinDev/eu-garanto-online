@@ -10,15 +10,54 @@ const corsHeaders = {
 
 type Suit = "hearts" | "diamonds" | "clubs" | "spades";
 type Rank = "4" | "5" | "6" | "7" | "Q" | "J" | "K" | "A" | "2" | "3";
+type GameMode = "classic" | "manilha";
 
 interface Card { suit: Suit; rank: Rank; }
 interface TrickCard { player_id: string; seat: number; card: Card; }
 
 const RANK_ORDER: Rank[] = ["4", "5", "6", "7", "Q", "J", "K", "A", "2", "3"];
 const SUITS: Suit[] = ["hearts", "diamonds", "clubs", "spades"];
+// Manilha suit order: diamonds < spades < hearts < clubs (zap)
+const MANILHA_SUIT_ORDER: Suit[] = ["diamonds", "spades", "hearts", "clubs"];
 
 function getCardStrength(rank: Rank): number {
   return RANK_ORDER.indexOf(rank);
+}
+
+function getManilhaRank(trumpCard: Card | null): Rank | null {
+  if (!trumpCard) return null;
+  const idx = RANK_ORDER.indexOf(trumpCard.rank);
+  // Next rank (wraps around)
+  return RANK_ORDER[(idx + 1) % RANK_ORDER.length];
+}
+
+function isManilha(card: Card, manilhaRank: Rank | null): boolean {
+  return manilhaRank !== null && card.rank === manilhaRank;
+}
+
+function getManilhaSuitStrength(suit: Suit): number {
+  return MANILHA_SUIT_ORDER.indexOf(suit);
+}
+
+function getEffectiveStrength(
+  card: Card,
+  trumpSuit: Suit | null,
+  leadSuit: Suit,
+  gameMode: GameMode,
+  manilhaRank: Rank | null
+): number {
+  if (gameMode === "manilha" && isManilha(card, manilhaRank)) {
+    // Manilhas are the strongest: 100 + suit order
+    return 100 + getManilhaSuitStrength(card.suit);
+  }
+  
+  const isTrump = trumpSuit && card.suit === trumpSuit;
+  const isLead = card.suit === leadSuit;
+  const strength = getCardStrength(card.rank);
+  
+  if (isTrump) return strength + 20;
+  if (isLead) return strength;
+  return -1; // Can't win
 }
 
 function createDeck(): Card[] {
@@ -40,24 +79,23 @@ function shuffleDeck(deck: Card[]): Card[] {
   return shuffled;
 }
 
-function determineTrickWinner(trick: TrickCard[], trumpSuit: Suit | null): TrickCard {
+function determineTrickWinner(
+  trick: TrickCard[],
+  trumpSuit: Suit | null,
+  gameMode: GameMode = "classic",
+  trumpCard: Card | null = null
+): TrickCard {
   const leadSuit = trick[0].card.suit;
+  const manilhaRank = gameMode === "manilha" ? getManilhaRank(trumpCard) : null;
   let winner = trick[0];
-  for (let i = 1; i < trick.length; i++) {
-    const card = trick[i].card;
-    const winnerCard = winner.card;
-    const cardIsTrump = trumpSuit && card.suit === trumpSuit;
-    const winnerIsTrump = trumpSuit && winnerCard.suit === trumpSuit;
+  let bestStrength = getEffectiveStrength(winner.card, trumpSuit, leadSuit, gameMode, manilhaRank);
 
-    if (cardIsTrump && !winnerIsTrump) { winner = trick[i]; continue; }
-    if (!cardIsTrump && winnerIsTrump) continue;
-    if (cardIsTrump && winnerIsTrump) {
-      if (getCardStrength(card.rank) > getCardStrength(winnerCard.rank)) winner = trick[i];
-      continue;
+  for (let i = 1; i < trick.length; i++) {
+    const str = getEffectiveStrength(trick[i].card, trumpSuit, leadSuit, gameMode, manilhaRank);
+    if (str > bestStrength) {
+      bestStrength = str;
+      winner = trick[i];
     }
-    if (card.suit === leadSuit && winnerCard.suit !== leadSuit) { winner = trick[i]; continue; }
-    if (card.suit !== leadSuit) continue;
-    if (getCardStrength(card.rank) > getCardStrength(winnerCard.rank)) winner = trick[i];
   }
   return winner;
 }
@@ -92,31 +130,24 @@ function getBluffChance(personality: BotPersonality): number {
   }
 }
 
-function getCurrentWinnerStrength(trick: TrickCard[], trumpSuit: Suit | null): number {
-  if (trick.length === 0) return -1;
-  const leadSuit = trick[0].card.suit;
-  let bestStrength = -1;
-  for (const tc of trick) {
-    const isTrump = trumpSuit && tc.card.suit === trumpSuit;
-    const isLead = tc.card.suit === leadSuit;
-    const strength = getCardStrength(tc.card.rank);
-    let effective = -1;
-    if (isTrump) effective = strength + 20;
-    else if (isLead) effective = strength;
-    if (effective > bestStrength) bestStrength = effective;
-  }
-  return bestStrength;
-}
-
-function wouldCardWin(card: Card, trick: TrickCard[], trumpSuit: Suit | null): boolean {
+function wouldCardWin(
+  card: Card,
+  trick: TrickCard[],
+  trumpSuit: Suit | null,
+  gameMode: GameMode = "classic",
+  trumpCard: Card | null = null
+): boolean {
   if (trick.length === 0) return true;
   const leadSuit = trick[0].card.suit;
-  const cardIsTrump = trumpSuit && card.suit === trumpSuit;
-  const cardStrength = getCardStrength(card.rank);
-  let cardEffective = -1;
-  if (cardIsTrump) cardEffective = cardStrength + 20;
-  else if (card.suit === leadSuit) cardEffective = cardStrength;
-  return cardEffective > getCurrentWinnerStrength(trick, trumpSuit);
+  const manilhaRank = gameMode === "manilha" ? getManilhaRank(trumpCard) : null;
+  const cardStr = getEffectiveStrength(card, trumpSuit, leadSuit, gameMode, manilhaRank);
+  
+  let bestStr = -1;
+  for (const tc of trick) {
+    const s = getEffectiveStrength(tc.card, trumpSuit, leadSuit, gameMode, manilhaRank);
+    if (s > bestStr) bestStr = s;
+  }
+  return cardStr > bestStr;
 }
 
 function botDecideBid(
@@ -125,30 +156,28 @@ function botDecideBid(
   numCards: number,
   forbiddenBid?: number,
   botId?: string,
-  otherBids?: Record<string, number>
+  otherBids?: Record<string, number>,
+  gameMode: GameMode = "classic",
+  trumpCard: Card | null = null
 ): number {
   const personality = getBotPersonality(botId || "default");
   const bluffChance = getBluffChance(personality);
+  const manilhaRank = gameMode === "manilha" ? getManilhaRank(trumpCard) : null;
 
-  // Base bid: count strong cards
   let baseBid = 0;
-  let trumpCount = 0;
-
   for (const card of hand) {
+    if (gameMode === "manilha" && isManilha(card, manilhaRank)) {
+      baseBid++; // Manilhas are almost guaranteed wins
+      continue;
+    }
     const strength = getCardStrength(card.rank);
     const isTrump = trumpSuit && card.suit === trumpSuit;
-    if (isTrump) {
-      trumpCount++;
-      if (strength >= 4) baseBid++; // Trump K+
-    } else if (strength >= 7) {
-      baseBid++; // A, 2, 3
-    } else if (strength >= 6 && Math.random() > 0.5) {
-      baseBid++; // K sometimes
-    }
+    if (isTrump && strength >= 4) baseBid++;
+    else if (strength >= 7) baseBid++;
+    else if (strength >= 6 && Math.random() > 0.5) baseBid++;
   }
   baseBid = Math.min(baseBid, numCards);
 
-  // Bluffing logic
   let bid = baseBid;
   const isBluffing = Math.random() < bluffChance;
 
@@ -166,7 +195,6 @@ function botDecideBid(
     }
   }
 
-  // Adapt based on other players' bids
   if (otherBids && Object.keys(otherBids).length > 0) {
     const totalOtherBids = Object.values(otherBids).reduce((s, b) => s + b, 0);
     if (totalOtherBids > numCards * 0.7 && personality !== "aggressive") {
@@ -179,15 +207,10 @@ function botDecideBid(
 
   bid = Math.max(0, Math.min(bid, numCards));
 
-  // Dealer restriction
   if (forbiddenBid !== undefined && bid === forbiddenBid) {
-    if (personality === "aggressive" && bid < numCards) {
-      bid = bid + 1;
-    } else if (bid > 0) {
-      bid = bid - 1;
-    } else {
-      bid = bid + 1;
-    }
+    if (personality === "aggressive" && bid < numCards) bid++;
+    else if (bid > 0) bid--;
+    else bid++;
     bid = Math.max(0, Math.min(bid, numCards));
   }
 
@@ -200,9 +223,12 @@ function botDecidePlay(
   trumpSuit: Suit | null,
   tricksWon: number,
   bid: number,
-  botId?: string
+  botId?: string,
+  gameMode: GameMode = "classic",
+  trumpCard: Card | null = null
 ): Card {
   const personality = getBotPersonality(botId || "default");
+  const manilhaRank = gameMode === "manilha" ? getManilhaRank(trumpCard) : null;
 
   let validCards = [...hand];
   if (currentTrick.length > 0) {
@@ -220,46 +246,38 @@ function botDecidePlay(
     let score = 0;
     const strength = getCardStrength(card.rank);
     const isTrump = trumpSuit && card.suit === trumpSuit;
+    const isManilhaCard = gameMode === "manilha" && isManilha(card, manilhaRank);
 
     if (needMore) {
       if (isLeading) {
-        if (isTrump) {
-          score = strength + 10;
-          if (personality === "aggressive") score += 5;
-          if (hand.length > 2 && personality !== "aggressive") score -= 8;
+        if (isManilhaCard) {
+          score = 50 + getManilhaSuitStrength(card.suit);
+          if (hand.length > 2 && personality !== "aggressive") score -= 30; // save for later
+        } else if (isTrump) {
+          score = strength + 10 + (personality === "aggressive" ? 5 : -8);
         } else {
           score = strength;
         }
       } else {
-        const wins = wouldCardWin(card, currentTrick, trumpSuit);
+        const wins = wouldCardWin(card, currentTrick, trumpSuit, gameMode, trumpCard);
         if (wins) {
-          score = 20 + strength;
-          if (personality === "conservative") score = 20 - strength; // minimum winning card
+          score = 20 + (personality === "conservative" ? -strength : strength);
+          if (isManilhaCard && personality !== "aggressive") score -= 10; // prefer weaker winning card
         } else {
-          score = -strength;
-          if (isTrump) score -= 20;
+          score = -strength - (isTrump ? 20 : 0) - (isManilhaCard ? 50 : 0);
         }
       }
     } else if (exactlyMet) {
-      // Need to LOSE remaining tricks
       if (isLeading) {
-        score = -strength;
-        if (isTrump) score -= 20;
+        score = -strength - (isTrump ? 20 : 0) - (isManilhaCard ? 50 : 0);
       } else {
-        const wins = wouldCardWin(card, currentTrick, trumpSuit);
-        if (!wins) {
-          score = 10 - strength;
-        } else {
-          score = -20;
-        }
+        const wins = wouldCardWin(card, currentTrick, trumpSuit, gameMode, trumpCard);
+        score = wins ? -20 : 10 - strength;
       }
     } else {
-      // Over bid, dump everything
-      score = -strength;
-      if (isTrump) score -= 20;
+      score = -strength - (isTrump ? 20 : 0) - (isManilhaCard ? 50 : 0);
     }
 
-    // Unpredictability factor
     score += Math.random() * 2;
     return { card, score };
   });
@@ -290,13 +308,15 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Load current state
+    // Load current state with optimistic locking via updated_at
     const { data: state, error: stateError } = await supabase
       .from("game_state")
       .select("*")
       .eq("room_id", room_id)
       .single();
     if (stateError || !state) throw new Error("Game state not found");
+
+    const stateUpdatedAt = state.updated_at;
 
     const { data: players, error: playersError } = await supabase
       .from("room_players")
@@ -311,6 +331,7 @@ Deno.serve(async (req) => {
       .eq("id", room_id)
       .single();
 
+    const gameMode: GameMode = (room?.game_mode as GameMode) || "classic";
     const numPlayers = players.length;
     const playerIds = players.map((p: any) => p.player_id);
     const playerBySeat = Object.fromEntries(players.map((p: any) => [p.seat, p]));
@@ -432,15 +453,13 @@ Deno.serve(async (req) => {
         newState.hands = newHands;
 
         if (newTrick.length === numPlayers) {
-          const winner = determineTrickWinner(newTrick, state.trump_suit);
+          const winner = determineTrickWinner(newTrick, state.trump_suit, gameMode, state.trump_card);
           const tricksWon = { ...state.tricks_won };
           tricksWon[winner.player_id] = (tricksWon[winner.player_id] || 0) + 1;
 
           newState.tricks_won = tricksWon;
-          // Keep the completed trick visible, set phase to trick_end
           newState.current_trick = newTrick;
           newState.phase = "trick_end";
-          // Use current_player_seat to indicate the winner's seat
           newState.current_player_seat = winner.seat;
 
           response.trick_winner = winner.player_id;
@@ -572,15 +591,27 @@ Deno.serve(async (req) => {
         throw new Error(`Unknown action: ${action.type}`);
     }
 
-    // Save state
-    await supabase
+    // Save state with optimistic locking
+    const { error: updateError } = await supabase
       .from("game_state")
       .update(newState)
-      .eq("room_id", room_id);
+      .eq("room_id", room_id)
+      .eq("updated_at", stateUpdatedAt);
+
+    if (updateError) {
+      // Retry once with fresh state for non-critical actions
+      if (action.type === "next_trick" || action.type === "next_round") {
+        return new Response(
+          JSON.stringify({ success: true, retried: true }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      throw new Error("Estado desatualizado, tente novamente");
+    }
 
     // ====== Process bot turns automatically ======
     if (newState.phase === "bidding" || newState.phase === "playing" || newState.phase === "trick_end") {
-      await processBotTurns(supabase, room_id, newState, players);
+      await processBotTurns(supabase, room_id, newState, players, gameMode);
     }
 
     // Reload final state
@@ -606,36 +637,27 @@ Deno.serve(async (req) => {
 
 // ====== Bot Turn Processing ======
 
-async function processBotTurns(supabase: any, roomId: string, state: any, players: any[]) {
+async function processBotTurns(supabase: any, roomId: string, state: any, players: any[], gameMode: GameMode) {
   const numPlayers = players.length;
   const playerIds = players.map((p: any) => p.player_id);
   const playerBySeat = Object.fromEntries(players.map((p: any) => [p.seat, p]));
 
   let currentState = { ...state };
-  // Allow enough iterations for all bots to play all their cards + bids
   const maxCards = currentState.round_num_cards || 1;
   let maxIterations = numPlayers * (maxCards + 1) + 2;
   const startTime = Date.now();
 
   while (maxIterations-- > 0) {
-    // Safety timeout: 25 seconds max for bot processing
-    if (Date.now() - startTime > 25000) break;
+    if (Date.now() - startTime > 20000) break;
 
-    // Handle trick_end: if all remaining players are bots, auto-advance
+    // Handle trick_end
     if (currentState.phase === "trick_end") {
-      // Check if any human player exists
       const hasHuman = players.some((p: any) => !p.is_bot);
-      if (hasHuman) break; // Let the human's frontend handle trick_end display
+      if (hasHuman) break;
 
-      // All bots: save state so realtime fires, wait, then resolve
-      await supabase
-        .from("game_state")
-        .update(currentState)
-        .eq("room_id", roomId);
+      await supabase.from("game_state").update(currentState).eq("room_id", roomId);
+      await new Promise((r) => setTimeout(r, 300));
 
-      await new Promise((r) => setTimeout(r, 500));
-
-      // Resolve trick_end (same logic as next_trick action)
       const trickWinnerSeat = currentState.current_player_seat;
       const completedTrick = currentState.current_trick || [];
       currentState.tricks_played = [...(currentState.tricks_played || []), completedTrick];
@@ -675,8 +697,8 @@ async function processBotTurns(supabase: any, roomId: string, state: any, player
     if (!currentPlayer || !currentPlayer.is_bot) break;
     if (currentState.phase !== "bidding" && currentState.phase !== "playing") break;
 
-    // Simulate thinking time (faster to avoid timeouts)
-    await new Promise((r) => setTimeout(r, 200 + Math.random() * 400));
+    // Faster bot thinking
+    await new Promise((r) => setTimeout(r, 150 + Math.random() * 250));
 
     if (currentState.phase === "bidding") {
       const hand: Card[] = currentState.hands[currentPlayer.player_id] || [];
@@ -692,12 +714,8 @@ async function processBotTurns(supabase: any, roomId: string, state: any, player
       }
 
       const bid = botDecideBid(
-        hand,
-        currentState.trump_suit,
-        numCards,
-        forbiddenBid,
-        currentPlayer.player_id,
-        bids
+        hand, currentState.trump_suit, numCards, forbiddenBid,
+        currentPlayer.player_id, bids, gameMode, currentState.trump_card
       );
       bids[currentPlayer.player_id] = bid;
       currentState.bids = bids;
@@ -715,12 +733,8 @@ async function processBotTurns(supabase: any, roomId: string, state: any, player
       const bid = currentState.bids[currentPlayer.player_id] || 0;
 
       const card = botDecidePlay(
-        hand,
-        trick,
-        currentState.trump_suit,
-        tricksWon,
-        bid,
-        currentPlayer.player_id
+        hand, trick, currentState.trump_suit, tricksWon, bid,
+        currentPlayer.player_id, gameMode, currentState.trump_card
       );
 
       const cardIdx = hand.findIndex((c: Card) => c.suit === card.suit && c.rank === card.rank);
@@ -734,9 +748,8 @@ async function processBotTurns(supabase: any, roomId: string, state: any, player
       ];
 
       if (newTrick.length === numPlayers) {
-        const winner = determineTrickWinner(newTrick, currentState.trump_suit);
+        const winner = determineTrickWinner(newTrick, currentState.trump_suit, gameMode, currentState.trump_card);
         currentState.tricks_won[winner.player_id] = (currentState.tricks_won[winner.player_id] || 0) + 1;
-        // Keep trick visible, set trick_end
         currentState.current_trick = newTrick;
         currentState.phase = "trick_end";
         currentState.current_player_seat = winner.seat;
@@ -747,9 +760,6 @@ async function processBotTurns(supabase: any, roomId: string, state: any, player
     }
 
     // Save intermediate state
-    await supabase
-      .from("game_state")
-      .update(currentState)
-      .eq("room_id", roomId);
+    await supabase.from("game_state").update(currentState).eq("room_id", roomId);
   }
 }

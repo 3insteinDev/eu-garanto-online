@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { usePlayerId, usePlayerName } from '@/hooks/usePlayerId';
@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
 import { GameTable } from '@/components/game/GameTable';
-import type { Player, PublicGameState } from '@/types/game';
+import type { Player, PublicGameState, GameMode } from '@/types/game';
 
 export default function RoomPage() {
   const { roomId } = useParams<{ roomId: string }>();
@@ -22,7 +22,9 @@ export default function RoomPage() {
   const [gameState, setGameState] = useState<PublicGameState | null>(null);
   const [roomCode, setRoomCode] = useState('');
   const [hostId, setHostId] = useState('');
+  const [gameMode, setGameMode] = useState<GameMode>('classic');
   const [loading, setLoading] = useState(false);
+  const fetchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchState = useCallback(async () => {
     if (!roomId) return;
@@ -34,6 +36,14 @@ export default function RoomPage() {
       // might not have state yet
     }
   }, [roomId, playerId]);
+
+  // Debounced fetch to prevent flooding from realtime events
+  const debouncedFetch = useCallback(() => {
+    if (fetchDebounceRef.current) clearTimeout(fetchDebounceRef.current);
+    fetchDebounceRef.current = setTimeout(() => {
+      fetchState();
+    }, 150);
+  }, [fetchState]);
 
   // Track active room
   useEffect(() => {
@@ -49,25 +59,29 @@ export default function RoomPage() {
       if (data) {
         setRoomCode(data.code);
         setHostId(data.host_id);
+        setGameMode((data as any).game_mode || 'classic');
       }
     });
     fetchState();
   }, [roomId, fetchState]);
 
-  // Realtime subscription
+  // Realtime subscription with debounce
   useEffect(() => {
     if (!roomId) return;
     const channel = supabase
       .channel(`room-${roomId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'game_state', filter: `room_id=eq.${roomId}` }, () => {
-        fetchState();
+        debouncedFetch();
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'room_players', filter: `room_id=eq.${roomId}` }, () => {
-        fetchState();
+        debouncedFetch();
       })
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [roomId, fetchState]);
+    return () => {
+      supabase.removeChannel(channel);
+      if (fetchDebounceRef.current) clearTimeout(fetchDebounceRef.current);
+    };
+  }, [roomId, debouncedFetch]);
 
   const handleStartGame = async () => {
     if (!roomId) return;
@@ -103,6 +117,8 @@ export default function RoomPage() {
   const isHost = playerId === hostId;
   const isWaiting = !gameState || gameState.phase === 'waiting';
 
+  const gameModeLabel = gameMode === 'manilha' ? '🔥 Manilha' : '🃏 Clássico';
+
   if (isWaiting) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4">
@@ -115,6 +131,7 @@ export default function RoomPage() {
               </span>
             </div>
             <p className="text-sm text-muted-foreground">Compartilhe este código com seus amigos</p>
+            <p className="text-sm font-medium text-primary">{gameModeLabel}</p>
           </div>
 
           <Card>
@@ -166,6 +183,7 @@ export default function RoomPage() {
       players={players}
       onRefresh={fetchState}
       onLeave={handleLeave}
+      gameMode={gameMode}
     />
   );
 }

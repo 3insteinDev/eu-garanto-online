@@ -6,6 +6,8 @@ export type Suit = 'hearts' | 'diamonds' | 'clubs' | 'spades';
 
 export type Rank = '4' | '5' | '6' | '7' | 'Q' | 'J' | 'K' | 'A' | '2' | '3';
 
+export type GameMode = 'classic' | 'manilha';
+
 export interface Card {
   suit: Suit;
   rank: Rank;
@@ -15,6 +17,9 @@ export interface Card {
 export const RANK_ORDER: Rank[] = ['4', '5', '6', '7', 'Q', 'J', 'K', 'A', '2', '3'];
 
 export const SUITS: Suit[] = ['hearts', 'diamonds', 'clubs', 'spades'];
+
+// Manilha suit order: diamonds < spades < hearts < clubs (zap)
+export const MANILHA_SUIT_ORDER: Suit[] = ['diamonds', 'spades', 'hearts', 'clubs'];
 
 export interface TrickCard {
   player_id: string;
@@ -43,6 +48,7 @@ export interface Room {
   host_id: string;
   max_players: number;
   status: RoomStatus;
+  game_mode: GameMode;
   created_at: string;
 }
 
@@ -55,13 +61,13 @@ export interface GameState {
   trump_card: Card | null;
   trump_suit: Suit | null;
   dealer_seat: number;
-  hands: Record<string, Card[]>;       // player_id -> cards (server only, filtered per player on client)
-  bids: Record<string, number>;         // player_id -> bid
+  hands: Record<string, Card[]>;
+  bids: Record<string, number>;
   current_trick: TrickCard[];
-  tricks_won: Record<string, number>;   // player_id -> tricks won this round
+  tricks_won: Record<string, number>;
   tricks_played: TrickCard[][];
-  scores: Record<string, number>;       // player_id -> total score
-  round_sequence: number[];             // e.g. [6,5,4,3,2,1,1,2,3,4,5,6]
+  scores: Record<string, number>;
+  round_sequence: number[];
   round_index: number;
 }
 

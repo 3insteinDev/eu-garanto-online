@@ -26,7 +26,7 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    const { host_id, host_name, max_players } = await req.json();
+    const { host_id, host_name, max_players, game_mode } = await req.json();
 
     if (!host_id || !host_name) {
       return new Response(
@@ -45,6 +45,7 @@ Deno.serve(async (req) => {
         host_id,
         max_players: max_players || 4,
         status: "waiting",
+        game_mode: game_mode || "classic",
       })
       .select()
       .single();
