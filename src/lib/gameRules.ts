@@ -2,8 +2,8 @@
 // Eu Garanto - Game Rules & Logic
 // ==========================================
 
-import type { Card, Suit, Rank, TrickCard, GameState } from '@/types/game';
-import { RANK_ORDER, SUITS } from '@/types/game';
+import type { Card, Suit, Rank, TrickCard, GameState, GameMode } from '@/types/game';
+import { RANK_ORDER, SUITS, MANILHA_SUIT_ORDER } from '@/types/game';
 
 // ---- Deck ----
 
@@ -32,44 +32,76 @@ export function getCardStrength(rank: Rank): number {
   return RANK_ORDER.indexOf(rank);
 }
 
+export function getManilhaRank(trumpCard: Card | null): Rank | null {
+  if (!trumpCard) return null;
+  const idx = RANK_ORDER.indexOf(trumpCard.rank);
+  return RANK_ORDER[(idx + 1) % RANK_ORDER.length];
+}
+
+export function isManilha(card: Card, manilhaRank: Rank | null): boolean {
+  return manilhaRank !== null && card.rank === manilhaRank;
+}
+
+export function getManilhaSuitStrength(suit: Suit): number {
+  return MANILHA_SUIT_ORDER.indexOf(suit);
+}
+
+export function getEffectiveStrength(
+  card: Card,
+  trumpSuit: Suit | null,
+  leadSuit: Suit,
+  gameMode: GameMode = 'classic',
+  manilhaRank: Rank | null = null
+): number {
+  if (gameMode === 'manilha' && isManilha(card, manilhaRank)) {
+    return 100 + getManilhaSuitStrength(card.suit);
+  }
+  const isTrump = trumpSuit && card.suit === trumpSuit;
+  const isLead = card.suit === leadSuit;
+  const strength = getCardStrength(card.rank);
+  if (isTrump) return strength + 20;
+  if (isLead) return strength;
+  return -1;
+}
+
 export function compareCards(a: Card, b: Card, trumpSuit: Suit | null, leadSuit: Suit): number {
   const aIsTrump = trumpSuit && a.suit === trumpSuit;
   const bIsTrump = trumpSuit && b.suit === trumpSuit;
   const aIsLead = a.suit === leadSuit;
   const bIsLead = b.suit === leadSuit;
 
-  // Trump beats non-trump
   if (aIsTrump && !bIsTrump) return 1;
   if (!aIsTrump && bIsTrump) return -1;
-
-  // Both trump: compare rank
   if (aIsTrump && bIsTrump) {
     return getCardStrength(a.rank) - getCardStrength(b.rank);
   }
-
-  // Lead suit beats non-lead
   if (aIsLead && !bIsLead) return 1;
   if (!aIsLead && bIsLead) return -1;
-
-  // Same suit: compare rank
   if (a.suit === b.suit) {
     return getCardStrength(a.rank) - getCardStrength(b.rank);
   }
-
-  // Neither trump nor lead: doesn't matter (both lose)
   return 0;
 }
 
 // ---- Trick Winner ----
 
-export function determineTrickWinner(trick: TrickCard[], trumpSuit: Suit | null): TrickCard {
+export function determineTrickWinner(
+  trick: TrickCard[],
+  trumpSuit: Suit | null,
+  gameMode: GameMode = 'classic',
+  trumpCard: Card | null = null
+): TrickCard {
   if (trick.length === 0) throw new Error('Empty trick');
 
   const leadSuit = trick[0].card.suit;
+  const manilhaRank = gameMode === 'manilha' ? getManilhaRank(trumpCard) : null;
   let winner = trick[0];
+  let bestStr = getEffectiveStrength(winner.card, trumpSuit, leadSuit, gameMode, manilhaRank);
 
   for (let i = 1; i < trick.length; i++) {
-    if (compareCards(trick[i].card, winner.card, trumpSuit, leadSuit) > 0) {
+    const str = getEffectiveStrength(trick[i].card, trumpSuit, leadSuit, gameMode, manilhaRank);
+    if (str > bestStr) {
+      bestStr = str;
       winner = trick[i];
     }
   }
@@ -78,22 +110,12 @@ export function determineTrickWinner(trick: TrickCard[], trumpSuit: Suit | null)
 }
 
 // ---- Round Sequence ----
-// For N players: goes down from max cards to 1, then back up
-// Max cards per player = floor(40 / N)
 
 export function generateRoundSequence(numPlayers: number): number[] {
   const maxCards = Math.floor(40 / numPlayers);
   const sequence: number[] = [];
-
-  // Descending: maxCards down to 1
-  for (let i = maxCards; i >= 1; i--) {
-    sequence.push(i);
-  }
-  // Ascending: 2 up to maxCards (skip 1 to avoid repeat)
-  for (let i = 2; i <= maxCards; i++) {
-    sequence.push(i);
-  }
-
+  for (let i = maxCards; i >= 1; i--) sequence.push(i);
+  for (let i = 2; i <= maxCards; i++) sequence.push(i);
   return sequence;
 }
 
@@ -113,7 +135,6 @@ export function dealCards(
     cardIndex += numCardsPerPlayer;
   }
 
-  // Trump card is the next card after dealing (if any remain)
   const trumpCard = cardIndex < deck.length ? deck[cardIndex] : null;
   const remainingDeck = deck.slice(cardIndex + 1);
 
@@ -134,7 +155,6 @@ export function isValidBid(
     return { valid: false, reason: `Aposta deve ser entre 0 e ${numCards}` };
   }
 
-  // Dealer restriction: sum of all bids cannot equal numCards
   const isDealer = currentPlayerIndex === dealerIndex;
   if (isDealer) {
     const totalBids = Object.values(bids).reduce((sum, b) => sum + b, 0);
@@ -153,18 +173,15 @@ export function isValidPlay(
   hand: Card[],
   currentTrick: TrickCard[]
 ): { valid: boolean; reason?: string } {
-  // Check card is in hand
   const hasCard = hand.some(c => c.suit === card.suit && c.rank === card.rank);
   if (!hasCard) {
     return { valid: false, reason: 'Carta não está na sua mão' };
   }
 
-  // If first card in trick, anything goes
   if (currentTrick.length === 0) {
     return { valid: true };
   }
 
-  // Must follow lead suit if possible
   const leadSuit = currentTrick[0].card.suit;
   const hasLeadSuit = hand.some(c => c.suit === leadSuit);
 
@@ -183,20 +200,11 @@ export function calculateRoundScores(
   playerIds: string[]
 ): Record<string, number> {
   const scores: Record<string, number> = {};
-
   for (const playerId of playerIds) {
     const bid = bids[playerId] ?? 0;
     const won = tricksWon[playerId] ?? 0;
-
-    if (won === bid) {
-      // Hit the bid: 10 + bid points
-      scores[playerId] = 10 + bid;
-    } else {
-      // Missed: 0 points
-      scores[playerId] = 0;
-    }
+    scores[playerId] = won === bid ? 10 + bid : 0;
   }
-
   return scores;
 }
 
