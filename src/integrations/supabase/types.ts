@@ -130,6 +130,7 @@ export type Database = {
         Row: {
           code: string
           created_at: string
+          game_mode: Database["public"]["Enums"]["game_mode"]
           host_id: string
           id: string
           max_players: number
@@ -139,6 +140,7 @@ export type Database = {
         Insert: {
           code: string
           created_at?: string
+          game_mode?: Database["public"]["Enums"]["game_mode"]
           host_id: string
           id?: string
           max_players?: number
@@ -148,6 +150,7 @@ export type Database = {
         Update: {
           code?: string
           created_at?: string
+          game_mode?: Database["public"]["Enums"]["game_mode"]
           host_id?: string
           id?: string
           max_players?: number
@@ -165,6 +168,7 @@ export type Database = {
     }
     Enums: {
       card_suit: "hearts" | "diamonds" | "clubs" | "spades"
+      game_mode: "classic" | "manilha"
       game_phase:
         | "waiting"
         | "dealing"
@@ -302,6 +306,7 @@ export const Constants = {
   public: {
     Enums: {
       card_suit: ["hearts", "diamonds", "clubs", "spades"],
+      game_mode: ["classic", "manilha"],
       game_phase: [
         "waiting",
         "dealing",
