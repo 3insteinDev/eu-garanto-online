@@ -439,7 +439,8 @@ Deno.serve(async (req) => {
         if (cardIdx === -1) throw new Error("Carta não está na sua mão");
 
         const trick: TrickCard[] = state.current_trick || [];
-        if (trick.length > 0) {
+        // In manilha mode: free play (no suit-following required)
+        if (gameMode !== "manilha" && trick.length > 0) {
           const leadSuit = trick[0].card.suit;
           const hasLeadSuit = hand.some((c: Card) => c.suit === leadSuit);
           if (hasLeadSuit && card.suit !== leadSuit) {
