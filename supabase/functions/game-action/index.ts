@@ -367,7 +367,7 @@ Deno.serve(async (req) => {
         if (numPlayers < 2) throw new Error("Mínimo 2 jogadores");
         if (state.phase !== "waiting") throw new Error("Jogo já iniciado");
 
-        const roundSequence = generateRoundSequence(numPlayers);
+        const roundSequence = generateRoundSequence(numPlayers, gameMode);
         const numCards = roundSequence[0];
         const deck = shuffleDeck(createDeck());
 
