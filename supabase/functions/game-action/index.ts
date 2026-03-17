@@ -117,8 +117,12 @@ function determineTrickWinner(
   return winner;
 }
 
-function generateRoundSequence(numPlayers: number): number[] {
-  const maxCards = Math.floor(40 / numPlayers);
+function generateRoundSequence(numPlayers: number, gameMode: GameMode = "classic"): number[] {
+  let maxCards = Math.floor(40 / numPlayers);
+  // In manilha mode, always reserve one card for trump
+  if (gameMode === "manilha" && maxCards * numPlayers >= 40) {
+    maxCards = Math.floor(39 / numPlayers);
+  }
   const seq: number[] = [];
   for (let i = maxCards; i >= 1; i--) seq.push(i);
   for (let i = 2; i <= maxCards; i++) seq.push(i);
