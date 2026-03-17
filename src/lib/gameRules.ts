@@ -176,7 +176,8 @@ export function isValidBid(
 export function isValidPlay(
   card: Card,
   hand: Card[],
-  currentTrick: TrickCard[]
+  currentTrick: TrickCard[],
+  gameMode: GameMode = 'classic'
 ): { valid: boolean; reason?: string } {
   const hasCard = hand.some(c => c.suit === card.suit && c.rank === card.rank);
   if (!hasCard) {
@@ -184,6 +185,11 @@ export function isValidPlay(
   }
 
   if (currentTrick.length === 0) {
+    return { valid: true };
+  }
+
+  // In manilha mode: free play, no suit-following required
+  if (gameMode === 'manilha') {
     return { valid: true };
   }
 

@@ -237,7 +237,8 @@ function botDecidePlay(
   const manilhaRank = gameMode === "manilha" ? getManilhaRank(trumpCard) : null;
 
   let validCards = [...hand];
-  if (currentTrick.length > 0) {
+  // In manilha mode: free play, all cards valid
+  if (gameMode !== "manilha" && currentTrick.length > 0) {
     const leadSuit = currentTrick[0].card.suit;
     const suitCards = hand.filter(c => c.suit === leadSuit);
     if (suitCards.length > 0) validCards = suitCards;

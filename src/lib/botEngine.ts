@@ -104,9 +104,10 @@ export function decidePlay(
   tricksWon: number,
   bid: number,
   difficulty: BotDifficulty,
-  botId?: string
+  botId?: string,
+  gameMode: GameMode = 'classic'
 ): Card {
-  const validCards = getValidCards(hand, currentTrick);
+  const validCards = getValidCards(hand, currentTrick, gameMode);
   if (validCards.length === 1) return validCards[0];
 
   if (difficulty === 'easy') {
