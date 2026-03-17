@@ -90,24 +90,39 @@ function determineTrickWinner(
   trumpSuit: Suit | null,
   gameMode: GameMode = "classic",
   trumpCard: Card | null = null
-): TrickCard {
+): TrickCard | null {
   const leadSuit = trick[0].card.suit;
   const manilhaRank = gameMode === "manilha" ? getManilhaRank(trumpCard) : null;
   let winner = trick[0];
   let bestStrength = getEffectiveStrength(winner.card, trumpSuit, leadSuit, gameMode, manilhaRank);
+  let tied = false;
 
   for (let i = 1; i < trick.length; i++) {
     const str = getEffectiveStrength(trick[i].card, trumpSuit, leadSuit, gameMode, manilhaRank);
     if (str > bestStrength) {
       bestStrength = str;
       winner = trick[i];
+      tied = false;
+    } else if (str === bestStrength) {
+      tied = true;
     }
   }
+
+  // In manilha mode, ties between non-manilha cards = melada (draw)
+  // Manilha ties can't happen (unique suits), but non-manilha same rank = melada
+  if (gameMode === "manilha" && tied && bestStrength < 100) {
+    return null; // melada
+  }
+
   return winner;
 }
 
-function generateRoundSequence(numPlayers: number): number[] {
-  const maxCards = Math.floor(40 / numPlayers);
+function generateRoundSequence(numPlayers: number, gameMode: GameMode = "classic"): number[] {
+  let maxCards = Math.floor(40 / numPlayers);
+  // In manilha mode, always reserve one card for trump
+  if (gameMode === "manilha" && maxCards * numPlayers >= 40) {
+    maxCards = Math.floor(39 / numPlayers);
+  }
   const seq: number[] = [];
   for (let i = maxCards; i >= 1; i--) seq.push(i);
   for (let i = 2; i <= maxCards; i++) seq.push(i);
@@ -352,7 +367,7 @@ Deno.serve(async (req) => {
         if (numPlayers < 2) throw new Error("Mínimo 2 jogadores");
         if (state.phase !== "waiting") throw new Error("Jogo já iniciado");
 
-        const roundSequence = generateRoundSequence(numPlayers);
+        const roundSequence = generateRoundSequence(numPlayers, gameMode);
         const numCards = roundSequence[0];
         const deck = shuffleDeck(createDeck());
 
@@ -463,14 +478,21 @@ Deno.serve(async (req) => {
         if (newTrick.length === numPlayers) {
           const winner = determineTrickWinner(newTrick, state.trump_suit, gameMode, state.trump_card);
           const tricksWon = { ...state.tricks_won };
-          tricksWon[winner.player_id] = (tricksWon[winner.player_id] || 0) + 1;
+
+          if (winner) {
+            tricksWon[winner.player_id] = (tricksWon[winner.player_id] || 0) + 1;
+            newState.current_player_seat = winner.seat;
+            response.trick_winner = winner.player_id;
+          } else {
+            // Melada: no one wins, same lead player starts next trick
+            newState.current_player_seat = newTrick[0].seat;
+            response.trick_winner = null;
+            response.melada = true;
+          }
 
           newState.tricks_won = tricksWon;
           newState.current_trick = newTrick;
           newState.phase = "trick_end";
-          newState.current_player_seat = winner.seat;
-
-          response.trick_winner = winner.player_id;
         } else {
           newState.current_trick = newTrick;
           newState.current_player_seat = getNextSeat(state.current_player_seat, numPlayers);
@@ -757,10 +779,15 @@ async function processBotTurns(supabase: any, roomId: string, state: any, player
 
       if (newTrick.length === numPlayers) {
         const winner = determineTrickWinner(newTrick, currentState.trump_suit, gameMode, currentState.trump_card);
-        currentState.tricks_won[winner.player_id] = (currentState.tricks_won[winner.player_id] || 0) + 1;
+        if (winner) {
+          currentState.tricks_won[winner.player_id] = (currentState.tricks_won[winner.player_id] || 0) + 1;
+          currentState.current_player_seat = winner.seat;
+        } else {
+          // Melada: same lead player continues
+          currentState.current_player_seat = newTrick[0].seat;
+        }
         currentState.current_trick = newTrick;
         currentState.phase = "trick_end";
-        currentState.current_player_seat = winner.seat;
       } else {
         currentState.current_trick = newTrick;
         currentState.current_player_seat = getNextSeat(currentState.current_player_seat, numPlayers);
