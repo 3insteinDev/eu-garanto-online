@@ -50,7 +50,13 @@ function getEffectiveStrength(
     // Manilhas are the strongest: 100 + suit order
     return 100 + getManilhaSuitStrength(card.suit);
   }
+
+  if (gameMode === "manilha") {
+    // In manilha mode: no suit restriction, pure rank strength
+    return getCardStrength(card.rank);
+  }
   
+  // Classic mode: trump > lead suit > off-suit
   const isTrump = trumpSuit && card.suit === trumpSuit;
   const isLead = card.suit === leadSuit;
   const strength = getCardStrength(card.rank);
