@@ -4,7 +4,7 @@
 // They bluff on bids and play strategically
 // ==========================================
 
-import type { Card, Suit, TrickCard } from '@/types/game';
+import type { Card, Suit, TrickCard, GameMode } from '@/types/game';
 import { RANK_ORDER } from '@/types/game';
 import { getCardStrength } from '@/lib/gameRules';
 
