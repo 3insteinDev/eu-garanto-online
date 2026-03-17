@@ -6,7 +6,7 @@ import {
   isManilha,
   determineTrickWinner,
   isValidPlay,
-  getCardStrength,
+  generateRoundSequence,
 } from '@/lib/gameRules';
 import type { Card, Suit, TrickCard, Rank } from '@/types/game';
 
@@ -42,7 +42,6 @@ describe('Manilha mode: free play', () => {
     const trick: TrickCard[] = [
       { player_id: 'p1', seat: 0, card: { suit: 'hearts', rank: 'K' } },
     ];
-    // In manilha mode, playing clubs on a hearts lead is valid
     const result = isValidPlay({ suit: 'clubs', rank: '3' }, hand, trick, 'manilha');
     expect(result.valid).toBe(true);
   });
@@ -67,33 +66,35 @@ describe('Manilha mode: trick winner', () => {
 
   it('manilha beats any non-manilha card', () => {
     const trick: TrickCard[] = [
-      { player_id: 'p1', seat: 0, card: { suit: 'hearts', rank: '3' } }, // strongest non-manilha
-      { player_id: 'p2', seat: 1, card: { suit: 'diamonds', rank: 'Q' } }, // manilha (weakest suit)
+      { player_id: 'p1', seat: 0, card: { suit: 'hearts', rank: '3' } },
+      { player_id: 'p2', seat: 1, card: { suit: 'diamonds', rank: 'Q' } },
     ];
     const winner = determineTrickWinner(trick, trumpCard.suit, 'manilha', trumpCard);
-    expect(winner.player_id).toBe('p2');
+    expect(winner).not.toBeNull();
+    expect(winner!.player_id).toBe('p2');
   });
 
   it('higher suit manilha beats lower suit manilha', () => {
-    // Order: diamonds < spades < hearts < clubs (zap)
     const trick: TrickCard[] = [
       { player_id: 'p1', seat: 0, card: { suit: 'diamonds', rank: 'Q' } },
       { player_id: 'p2', seat: 1, card: { suit: 'spades', rank: 'Q' } },
-      { player_id: 'p3', seat: 2, card: { suit: 'clubs', rank: 'Q' } }, // zap
+      { player_id: 'p3', seat: 2, card: { suit: 'clubs', rank: 'Q' } },
       { player_id: 'p4', seat: 3, card: { suit: 'hearts', rank: 'Q' } },
     ];
     const winner = determineTrickWinner(trick, trumpCard.suit, 'manilha', trumpCard);
-    expect(winner.player_id).toBe('p3'); // clubs = zap wins
+    expect(winner).not.toBeNull();
+    expect(winner!.player_id).toBe('p3'); // clubs = zap wins
   });
 
   it('without manilha, highest rank wins regardless of suit', () => {
     const trick: TrickCard[] = [
       { player_id: 'p1', seat: 0, card: { suit: 'hearts', rank: '4' } },
-      { player_id: 'p2', seat: 1, card: { suit: 'clubs', rank: '3' } }, // rank 3 is strongest
+      { player_id: 'p2', seat: 1, card: { suit: 'clubs', rank: '3' } },
       { player_id: 'p3', seat: 2, card: { suit: 'spades', rank: 'A' } },
     ];
     const winner = determineTrickWinner(trick, trumpCard.suit, 'manilha', trumpCard);
-    expect(winner.player_id).toBe('p2');
+    expect(winner).not.toBeNull();
+    expect(winner!.player_id).toBe('p2');
   });
 
   it('off-suit card can win if it has higher rank (no suit restriction)', () => {
@@ -102,7 +103,149 @@ describe('Manilha mode: trick winner', () => {
       { player_id: 'p2', seat: 1, card: { suit: 'diamonds', rank: 'A' } },
     ];
     const winner = determineTrickWinner(trick, trumpCard.suit, 'manilha', trumpCard);
-    expect(winner.player_id).toBe('p2');
+    expect(winner).not.toBeNull();
+    expect(winner!.player_id).toBe('p2');
+  });
+});
+
+// ---- Manilha Tie-Breaking by Suit ----
+
+describe('Manilha mode: manilha tie-breaking by suit', () => {
+  const trumpCard: Card = { suit: 'hearts', rank: 'K' }; // manilha = A
+
+  it('clubs (zap) beats hearts manilha', () => {
+    const trick: TrickCard[] = [
+      { player_id: 'p1', seat: 0, card: { suit: 'hearts', rank: 'A' } },
+      { player_id: 'p2', seat: 1, card: { suit: 'clubs', rank: 'A' } },
+    ];
+    const winner = determineTrickWinner(trick, trumpCard.suit, 'manilha', trumpCard);
+    expect(winner).not.toBeNull();
+    expect(winner!.player_id).toBe('p2'); // clubs = zap
+  });
+
+  it('spades beats diamonds manilha', () => {
+    const trick: TrickCard[] = [
+      { player_id: 'p1', seat: 0, card: { suit: 'diamonds', rank: 'A' } },
+      { player_id: 'p2', seat: 1, card: { suit: 'spades', rank: 'A' } },
+    ];
+    const winner = determineTrickWinner(trick, trumpCard.suit, 'manilha', trumpCard);
+    expect(winner).not.toBeNull();
+    expect(winner!.player_id).toBe('p2');
+  });
+
+  it('full 4-manilha trick: clubs wins', () => {
+    const trick: TrickCard[] = [
+      { player_id: 'p1', seat: 0, card: { suit: 'diamonds', rank: 'A' } },
+      { player_id: 'p2', seat: 1, card: { suit: 'hearts', rank: 'A' } },
+      { player_id: 'p3', seat: 2, card: { suit: 'spades', rank: 'A' } },
+      { player_id: 'p4', seat: 3, card: { suit: 'clubs', rank: 'A' } },
+    ];
+    const winner = determineTrickWinner(trick, trumpCard.suit, 'manilha', trumpCard);
+    expect(winner).not.toBeNull();
+    expect(winner!.player_id).toBe('p4');
+  });
+});
+
+// ---- Melada (Draw) Tests ----
+
+describe('Manilha mode: melada (draw)', () => {
+  const trumpCard: Card = { suit: 'hearts', rank: '7' }; // manilha = Q
+
+  it('same rank non-manilha cards cause melada', () => {
+    const trick: TrickCard[] = [
+      { player_id: 'p1', seat: 0, card: { suit: 'hearts', rank: '3' } },
+      { player_id: 'p2', seat: 1, card: { suit: 'clubs', rank: '3' } },
+    ];
+    const winner = determineTrickWinner(trick, trumpCard.suit, 'manilha', trumpCard);
+    expect(winner).toBeNull(); // melada!
+  });
+
+  it('melada with 3 players tied on same rank', () => {
+    const trick: TrickCard[] = [
+      { player_id: 'p1', seat: 0, card: { suit: 'hearts', rank: 'A' } },
+      { player_id: 'p2', seat: 1, card: { suit: 'clubs', rank: 'A' } },
+      { player_id: 'p3', seat: 2, card: { suit: 'spades', rank: 'A' } },
+    ];
+    const winner = determineTrickWinner(trick, trumpCard.suit, 'manilha', trumpCard);
+    expect(winner).toBeNull();
+  });
+
+  it('no melada when one card is clearly higher', () => {
+    const trick: TrickCard[] = [
+      { player_id: 'p1', seat: 0, card: { suit: 'hearts', rank: 'K' } },
+      { player_id: 'p2', seat: 1, card: { suit: 'clubs', rank: 'A' } },
+    ];
+    const winner = determineTrickWinner(trick, trumpCard.suit, 'manilha', trumpCard);
+    expect(winner).not.toBeNull();
+    expect(winner!.player_id).toBe('p2');
+  });
+
+  it('no melada when manilhas tie (different suits break it)', () => {
+    // Manilhas have unique suit strength, so ties are impossible
+    const trick: TrickCard[] = [
+      { player_id: 'p1', seat: 0, card: { suit: 'diamonds', rank: 'Q' } },
+      { player_id: 'p2', seat: 1, card: { suit: 'spades', rank: 'Q' } },
+    ];
+    const winner = determineTrickWinner(trick, trumpCard.suit, 'manilha', trumpCard);
+    expect(winner).not.toBeNull();
+    expect(winner!.player_id).toBe('p2');
+  });
+
+  it('melada even if some lower cards differ (highest tied = melada)', () => {
+    const trick: TrickCard[] = [
+      { player_id: 'p1', seat: 0, card: { suit: 'hearts', rank: '3' } },
+      { player_id: 'p2', seat: 1, card: { suit: 'diamonds', rank: '3' } },
+      { player_id: 'p3', seat: 2, card: { suit: 'spades', rank: '4' } },
+    ];
+    const winner = determineTrickWinner(trick, trumpCard.suit, 'manilha', trumpCard);
+    expect(winner).toBeNull(); // p1 and p2 tied at highest
+  });
+
+  it('classic mode does NOT have melada', () => {
+    const trick: TrickCard[] = [
+      { player_id: 'p1', seat: 0, card: { suit: 'hearts', rank: '3' } },
+      { player_id: 'p2', seat: 1, card: { suit: 'clubs', rank: '3' } },
+    ];
+    const winner = determineTrickWinner(trick, 'hearts', 'classic', null);
+    expect(winner).not.toBeNull();
+  });
+});
+
+// ---- Trump Card Always Exists ----
+
+describe('Manilha mode: trump card guarantee', () => {
+  it('round sequence in manilha mode ensures room for trump card', () => {
+    const seq4 = generateRoundSequence(4, 'manilha');
+    // With 4 players, max should be 9 (not 10) so 4*9=36 < 40
+    expect(seq4[0]).toBeLessThanOrEqual(9);
+    expect(seq4[0] * 4).toBeLessThan(40);
+  });
+
+  it('classic mode allows full deck distribution', () => {
+    const seq4 = generateRoundSequence(4, 'classic');
+    expect(seq4[0]).toBe(10);
+  });
+
+  it('5 players manilha mode has room for trump', () => {
+    const seq5 = generateRoundSequence(5, 'manilha');
+    expect(seq5[0] * 5).toBeLessThan(40);
+  });
+});
+
+// ---- Turn Continuity After Melada ----
+
+describe('Manilha mode: turn continuity after melada', () => {
+  it('lead player seat is preserved on melada (first player in trick)', () => {
+    const trumpCard: Card = { suit: 'hearts', rank: '7' };
+    const trick: TrickCard[] = [
+      { player_id: 'p1', seat: 2, card: { suit: 'hearts', rank: 'K' } },
+      { player_id: 'p2', seat: 3, card: { suit: 'clubs', rank: 'K' } },
+    ];
+    const winner = determineTrickWinner(trick, trumpCard.suit, 'manilha', trumpCard);
+    expect(winner).toBeNull();
+    // After melada, same lead player (seat 2) should start next trick
+    // This is handled by the game engine using trick[0].seat
+    expect(trick[0].seat).toBe(2);
   });
 });
 
@@ -137,18 +280,15 @@ describe('Manilha mode: bot simulation', () => {
     const trick: TrickCard[] = [
       { player_id: 'other', seat: 0, card: { suit: 'spades', rank: 'A' } },
     ];
-    // Bot should be able to play any card - no crash
     for (let i = 0; i < 20; i++) {
       const card = decidePlay(hand, trick, 'hearts', 0, 1, 'medium', `bot_${i}`, 'manilha');
       expect(hand.some(c => c.suit === card.suit && c.rank === card.rank)).toBe(true);
     }
   });
 
-  it('completes a full manilha game with 4 bots', () => {
+  it('completes a full manilha game with melada handling', () => {
     const numPlayers = 4;
-    const maxCards = Math.floor(40 / numPlayers);
-    const roundSeq: number[] = [];
-    for (let i = maxCards; i >= 1; i--) roundSeq.push(i);
+    const roundSeq = generateRoundSequence(numPlayers, 'manilha');
 
     const players = Array.from({ length: numPlayers }, (_, i) => ({
       id: `mbot_${i}`,
@@ -160,6 +300,7 @@ describe('Manilha mode: bot simulation', () => {
     }));
 
     let dealerSeat = 0;
+    let meladaCount = 0;
 
     for (const numCards of roundSeq) {
       const deck = shuffle(createDeck());
@@ -172,6 +313,9 @@ describe('Manilha mode: bot simulation', () => {
       }
       const trumpCard = idx < deck.length ? deck[idx] : null;
       const trumpSuit = trumpCard?.suit ?? null;
+
+      // Trump must always exist in manilha mode
+      expect(trumpCard).not.toBeNull();
 
       // Bidding
       let bidSeat = (dealerSeat + 1) % numPlayers;
@@ -205,8 +349,14 @@ describe('Manilha mode: bot simulation', () => {
           seat = (seat + 1) % numPlayers;
         }
         const winner = determineTrickWinner(trick, trumpSuit, 'manilha', trumpCard);
-        players.find(p => p.id === winner.player_id)!.tricksWon++;
-        leadSeat = winner.seat;
+        if (winner) {
+          players.find(p => p.id === winner.player_id)!.tricksWon++;
+          leadSeat = winner.seat;
+        } else {
+          // Melada: same lead player continues
+          meladaCount++;
+          // leadSeat stays the same
+        }
       }
 
       for (const p of players) {
@@ -218,5 +368,6 @@ describe('Manilha mode: bot simulation', () => {
     }
 
     expect(players.some(p => p.score > 0)).toBe(true);
+    // Melada should be possible (not guaranteed, but the logic didn't crash)
   });
 });

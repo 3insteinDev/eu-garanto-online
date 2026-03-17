@@ -95,20 +95,29 @@ export function determineTrickWinner(
   trumpSuit: Suit | null,
   gameMode: GameMode = 'classic',
   trumpCard: Card | null = null
-): TrickCard {
+): TrickCard | null {
   if (trick.length === 0) throw new Error('Empty trick');
 
   const leadSuit = trick[0].card.suit;
   const manilhaRank = gameMode === 'manilha' ? getManilhaRank(trumpCard) : null;
   let winner = trick[0];
   let bestStr = getEffectiveStrength(winner.card, trumpSuit, leadSuit, gameMode, manilhaRank);
+  let tied = false;
 
   for (let i = 1; i < trick.length; i++) {
     const str = getEffectiveStrength(trick[i].card, trumpSuit, leadSuit, gameMode, manilhaRank);
     if (str > bestStr) {
       bestStr = str;
       winner = trick[i];
+      tied = false;
+    } else if (str === bestStr) {
+      tied = true;
     }
+  }
+
+  // In manilha mode, ties between non-manilha cards = melada (draw)
+  if (gameMode === 'manilha' && tied && bestStr < 100) {
+    return null;
   }
 
   return winner;
@@ -116,8 +125,11 @@ export function determineTrickWinner(
 
 // ---- Round Sequence ----
 
-export function generateRoundSequence(numPlayers: number): number[] {
-  const maxCards = Math.floor(40 / numPlayers);
+export function generateRoundSequence(numPlayers: number, gameMode: GameMode = 'classic'): number[] {
+  let maxCards = Math.floor(40 / numPlayers);
+  if (gameMode === 'manilha' && maxCards * numPlayers >= 40) {
+    maxCards = Math.floor(39 / numPlayers);
+  }
   const sequence: number[] = [];
   for (let i = maxCards; i >= 1; i--) sequence.push(i);
   for (let i = 2; i <= maxCards; i++) sequence.push(i);
