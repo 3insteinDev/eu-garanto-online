@@ -478,14 +478,21 @@ Deno.serve(async (req) => {
         if (newTrick.length === numPlayers) {
           const winner = determineTrickWinner(newTrick, state.trump_suit, gameMode, state.trump_card);
           const tricksWon = { ...state.tricks_won };
-          tricksWon[winner.player_id] = (tricksWon[winner.player_id] || 0) + 1;
+
+          if (winner) {
+            tricksWon[winner.player_id] = (tricksWon[winner.player_id] || 0) + 1;
+            newState.current_player_seat = winner.seat;
+            response.trick_winner = winner.player_id;
+          } else {
+            // Melada: no one wins, same lead player starts next trick
+            newState.current_player_seat = newTrick[0].seat;
+            response.trick_winner = null;
+            response.melada = true;
+          }
 
           newState.tricks_won = tricksWon;
           newState.current_trick = newTrick;
           newState.phase = "trick_end";
-          newState.current_player_seat = winner.seat;
-
-          response.trick_winner = winner.player_id;
         } else {
           newState.current_trick = newTrick;
           newState.current_player_seat = getNextSeat(state.current_player_seat, numPlayers);
