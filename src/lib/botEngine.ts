@@ -4,7 +4,7 @@
 // They bluff on bids and play strategically
 // ==========================================
 
-import type { Card, Suit, TrickCard } from '@/types/game';
+import type { Card, Suit, TrickCard, GameMode } from '@/types/game';
 import { RANK_ORDER } from '@/types/game';
 import { getCardStrength } from '@/lib/gameRules';
 
@@ -104,9 +104,10 @@ export function decidePlay(
   tricksWon: number,
   bid: number,
   difficulty: BotDifficulty,
-  botId?: string
+  botId?: string,
+  gameMode: GameMode = 'classic'
 ): Card {
-  const validCards = getValidCards(hand, currentTrick);
+  const validCards = getValidCards(hand, currentTrick, gameMode);
   if (validCards.length === 1) return validCards[0];
 
   if (difficulty === 'easy') {
@@ -149,8 +150,10 @@ export function decidePlay(
   return scored[0].card;
 }
 
-function getValidCards(hand: Card[], currentTrick: TrickCard[]): Card[] {
+function getValidCards(hand: Card[], currentTrick: TrickCard[], gameMode: GameMode = 'classic'): Card[] {
   if (currentTrick.length === 0) return [...hand];
+  // In manilha mode: free play, all cards valid
+  if (gameMode === 'manilha') return [...hand];
   const leadSuit = currentTrick[0].card.suit;
   const suitCards = hand.filter(c => c.suit === leadSuit);
   return suitCards.length > 0 ? suitCards : [...hand];

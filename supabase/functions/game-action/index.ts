@@ -50,7 +50,13 @@ function getEffectiveStrength(
     // Manilhas are the strongest: 100 + suit order
     return 100 + getManilhaSuitStrength(card.suit);
   }
+
+  if (gameMode === "manilha") {
+    // In manilha mode: no suit restriction, pure rank strength
+    return getCardStrength(card.rank);
+  }
   
+  // Classic mode: trump > lead suit > off-suit
   const isTrump = trumpSuit && card.suit === trumpSuit;
   const isLead = card.suit === leadSuit;
   const strength = getCardStrength(card.rank);
@@ -231,7 +237,8 @@ function botDecidePlay(
   const manilhaRank = gameMode === "manilha" ? getManilhaRank(trumpCard) : null;
 
   let validCards = [...hand];
-  if (currentTrick.length > 0) {
+  // In manilha mode: free play, all cards valid
+  if (gameMode !== "manilha" && currentTrick.length > 0) {
     const leadSuit = currentTrick[0].card.suit;
     const suitCards = hand.filter(c => c.suit === leadSuit);
     if (suitCards.length > 0) validCards = suitCards;
@@ -433,7 +440,8 @@ Deno.serve(async (req) => {
         if (cardIdx === -1) throw new Error("Carta não está na sua mão");
 
         const trick: TrickCard[] = state.current_trick || [];
-        if (trick.length > 0) {
+        // In manilha mode: free play (no suit-following required)
+        if (gameMode !== "manilha" && trick.length > 0) {
           const leadSuit = trick[0].card.suit;
           const hasLeadSuit = hand.some((c: Card) => c.suit === leadSuit);
           if (hasLeadSuit && card.suit !== leadSuit) {
