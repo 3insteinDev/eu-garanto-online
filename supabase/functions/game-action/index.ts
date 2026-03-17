@@ -90,19 +90,30 @@ function determineTrickWinner(
   trumpSuit: Suit | null,
   gameMode: GameMode = "classic",
   trumpCard: Card | null = null
-): TrickCard {
+): TrickCard | null {
   const leadSuit = trick[0].card.suit;
   const manilhaRank = gameMode === "manilha" ? getManilhaRank(trumpCard) : null;
   let winner = trick[0];
   let bestStrength = getEffectiveStrength(winner.card, trumpSuit, leadSuit, gameMode, manilhaRank);
+  let tied = false;
 
   for (let i = 1; i < trick.length; i++) {
     const str = getEffectiveStrength(trick[i].card, trumpSuit, leadSuit, gameMode, manilhaRank);
     if (str > bestStrength) {
       bestStrength = str;
       winner = trick[i];
+      tied = false;
+    } else if (str === bestStrength) {
+      tied = true;
     }
   }
+
+  // In manilha mode, ties between non-manilha cards = melada (draw)
+  // Manilha ties can't happen (unique suits), but non-manilha same rank = melada
+  if (gameMode === "manilha" && tied && bestStrength < 100) {
+    return null; // melada
+  }
+
   return winner;
 }
 
