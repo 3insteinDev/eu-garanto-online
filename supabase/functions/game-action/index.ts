@@ -779,10 +779,15 @@ async function processBotTurns(supabase: any, roomId: string, state: any, player
 
       if (newTrick.length === numPlayers) {
         const winner = determineTrickWinner(newTrick, currentState.trump_suit, gameMode, currentState.trump_card);
-        currentState.tricks_won[winner.player_id] = (currentState.tricks_won[winner.player_id] || 0) + 1;
+        if (winner) {
+          currentState.tricks_won[winner.player_id] = (currentState.tricks_won[winner.player_id] || 0) + 1;
+          currentState.current_player_seat = winner.seat;
+        } else {
+          // Melada: same lead player continues
+          currentState.current_player_seat = newTrick[0].seat;
+        }
         currentState.current_trick = newTrick;
         currentState.phase = "trick_end";
-        currentState.current_player_seat = winner.seat;
       } else {
         currentState.current_trick = newTrick;
         currentState.current_player_seat = getNextSeat(currentState.current_player_seat, numPlayers);
