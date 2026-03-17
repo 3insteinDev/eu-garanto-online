@@ -149,8 +149,10 @@ export function decidePlay(
   return scored[0].card;
 }
 
-function getValidCards(hand: Card[], currentTrick: TrickCard[]): Card[] {
+function getValidCards(hand: Card[], currentTrick: TrickCard[], gameMode: GameMode = 'classic'): Card[] {
   if (currentTrick.length === 0) return [...hand];
+  // In manilha mode: free play, all cards valid
+  if (gameMode === 'manilha') return [...hand];
   const leadSuit = currentTrick[0].card.suit;
   const suitCards = hand.filter(c => c.suit === leadSuit);
   return suitCards.length > 0 ? suitCards : [...hand];
