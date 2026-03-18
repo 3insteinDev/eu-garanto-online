@@ -1,6 +1,7 @@
 import type { TrickCard } from '@/types/game';
 import type { Player } from '@/types/game';
 import { PlayingCard } from './PlayingCard';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface TrickAreaProps {
   currentTrick: TrickCard[];
