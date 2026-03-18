@@ -8,13 +8,16 @@ import { BidPanel } from './BidPanel';
 import { ScoreBoard } from './ScoreBoard';
 import { TrickHistory } from './TrickHistory';
 import { PlayingCard } from './PlayingCard';
-import { RoundResultOverlay } from './RoundResultOverlay';
+import { RoundFeedback } from './RoundFeedback';
+import { TurnTimer } from './TurnTimer';
+import { ChatPanel } from './ChatPanel';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 
 interface GameTableProps {
   roomId: string;
   playerId: string;
+  playerName: string;
   gameState: PublicGameState;
   players: Player[];
   onRefresh: () => void;
@@ -22,7 +25,7 @@ interface GameTableProps {
   gameMode?: GameMode;
 }
 
-export function GameTable({ roomId, playerId, gameState, players, onRefresh, onLeave, gameMode = 'classic' }: GameTableProps) {
+export function GameTable({ roomId, playerId, playerName, gameState, players, onRefresh, onLeave, gameMode = 'classic' }: GameTableProps) {
   const api = useGameApi();
   const [selectedCard, setSelectedCard] = useState<CardType | null>(null);
   const [loading, setLoading] = useState(false);
@@ -42,7 +45,24 @@ export function GameTable({ roomId, playerId, gameState, players, onRefresh, onL
     ? RANK_ORDER[(RANK_ORDER.indexOf(gameState.trump_card.rank as any) + 1) % RANK_ORDER.length]
     : null;
 
-  // Auto-advance trick_end after 2 seconds (with guard against double-fire)
+  // Compute card counts for all players
+  const cardCounts: Record<string, number> = {};
+  if (gameState.player_count) {
+    // We know our hand size; estimate others from round info
+    const myCards = (gameState.my_hand || []).length;
+    cardCounts[playerId] = myCards;
+    // Other players: same count based on tricks played
+    for (const p of players) {
+      if (p.player_id !== playerId) {
+        // All players start with same cards; subtract tricks they participated in
+        const totalTricks = (gameState.tricks_played || []).length;
+        const currentTrickPlayed = (gameState.current_trick || []).some((tc: any) => tc.player_id === p.player_id) ? 1 : 0;
+        cardCounts[p.player_id] = (gameState.round_num_cards ?? 0) - totalTricks - currentTrickPlayed;
+      }
+    }
+  }
+
+  // Auto-advance trick_end after 2 seconds
   useEffect(() => {
     if (gameState.phase !== 'trick_end') {
       nextTrickCalledRef.current = false;
@@ -115,6 +135,28 @@ export function GameTable({ roomId, playerId, gameState, players, onRefresh, onL
     }
   };
 
+  // Timer auto-action: play random card or bid 0
+  const handleTimeout = useCallback(async () => {
+    if (gameState.phase === 'playing' && isMyTurn) {
+      const hand = gameState.my_hand || [];
+      if (hand.length > 0) {
+        const randomCard = hand[Math.floor(Math.random() * hand.length)];
+        try {
+          await api.playCard(roomId, playerId, randomCard);
+          toast.info('Tempo esgotado! Carta jogada automaticamente.');
+        } catch { /* ignore */ }
+      }
+    } else if (gameState.phase === 'bidding' && isMyTurn) {
+      // Auto-bid 0 (or 1 if 0 is forbidden)
+      const fb = forbiddenBid;
+      const autoBid = fb === 0 ? 1 : 0;
+      try {
+        await api.placeBid(roomId, playerId, autoBid);
+        toast.info('Tempo esgotado! Aposta automática.');
+      } catch { /* ignore */ }
+    }
+  }, [gameState.phase, gameState.my_hand, isMyTurn, roomId, playerId, api]);
+
   // Compute forbidden bid for dealer
   let forbiddenBid: number | undefined;
   if (gameState.phase === 'bidding' && isMyTurn && myPlayer) {
@@ -134,13 +176,16 @@ export function GameTable({ roomId, playerId, gameState, players, onRefresh, onL
     <div className="min-h-screen flex flex-col">
       {/* Round result overlay */}
       {showRoundResult && roundResultDataRef.current && (
-        <RoundResultOverlay
+        <RoundFeedback
           players={players}
           bids={roundResultDataRef.current.bids}
           tricksWon={roundResultDataRef.current.tricksWon}
           onDismiss={handleRoundResultDismiss}
         />
       )}
+
+      {/* Chat */}
+      <ChatPanel roomId={roomId} playerId={playerId} playerName={playerName} />
 
       {/* Top bar */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-card/50">
@@ -184,13 +229,14 @@ export function GameTable({ roomId, playerId, gameState, players, onRefresh, onL
             currentPlayerSeat={gameState.current_player_seat}
             dealerSeat={gameState.dealer_seat}
             myPlayerId={playerId}
+            cardCounts={cardCounts}
           />
         </div>
 
         {/* Center */}
         <div className="flex-1 flex flex-col items-center justify-center p-4 gap-6">
-          {/* Status */}
-          <div className="text-center">
+          {/* Status + Timer */}
+          <div className="text-center space-y-2">
             {gameState.phase === 'bidding' && (
               <p className="text-lg">
                 {isMyTurn ? (
@@ -237,6 +283,18 @@ export function GameTable({ roomId, playerId, gameState, players, onRefresh, onL
                 </Button>
               </div>
             )}
+
+            {/* Turn timer */}
+            {isMyTurn && (
+              <div className="flex justify-center">
+                <TurnTimer
+                  isMyTurn={isMyTurn}
+                  duration={15}
+                  onTimeout={handleTimeout}
+                  phase={gameState.phase}
+                />
+              </div>
+            )}
           </div>
 
           {/* Trick / History */}
@@ -280,6 +338,7 @@ export function GameTable({ roomId, playerId, gameState, players, onRefresh, onL
               currentPlayerSeat={gameState.current_player_seat}
               dealerSeat={gameState.dealer_seat}
               myPlayerId={playerId}
+              cardCounts={cardCounts}
             />
           </div>
           <PlayerHand
@@ -288,6 +347,7 @@ export function GameTable({ roomId, playerId, gameState, players, onRefresh, onL
             disabled={!isMyTurn || gameState.phase !== 'playing' || loading}
             selectedCard={selectedCard}
             onSelectCard={setSelectedCard}
+            manilhaRank={manilhaRank}
           />
         </div>
       )}
