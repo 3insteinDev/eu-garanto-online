@@ -1,6 +1,7 @@
 import type { TrickCard } from '@/types/game';
 import type { Player } from '@/types/game';
 import { PlayingCard } from './PlayingCard';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface TrickAreaProps {
   currentTrick: TrickCard[];
@@ -20,8 +21,8 @@ export function TrickArea({ currentTrick, players, winnerSeat, isTrickEnd, isMel
     : null;
 
   return (
+    <TooltipProvider delayDuration={300}>
     <div className="flex flex-col items-center gap-2">
-      <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Mesa</h3>
 
       {isTrickEnd && isMelada && (
         <p className="text-lg text-destructive font-semibold animate-fade-in">
@@ -49,16 +50,24 @@ export function TrickArea({ currentTrick, players, winnerSeat, isTrickEnd, isMel
                 }`}
               >
                 <PlayingCard card={tc.card} disabled small isWinner={isWinner} animateIn />
-                <span className={`text-xs truncate max-w-[60px] ${
-                  isWinner ? 'text-primary font-bold' : 'text-muted-foreground'
-                }`}>
-                  {getPlayerName(tc.player_id)}
-                </span>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className={`text-xs truncate max-w-[80px] block cursor-default ${
+                      isWinner ? 'text-primary font-bold' : 'text-muted-foreground'
+                    }`}>
+                      {getPlayerName(tc.player_id)}
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    <p>{getPlayerName(tc.player_id)}</p>
+                  </TooltipContent>
+                </Tooltip>
               </div>
             );
           })
         )}
       </div>
     </div>
+    </TooltipProvider>
   );
 }
