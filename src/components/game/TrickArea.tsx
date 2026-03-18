@@ -68,5 +68,6 @@ export function TrickArea({ currentTrick, players, winnerSeat, isTrickEnd, isMel
         )}
       </div>
     </div>
+    </TooltipProvider>
   );
 }
