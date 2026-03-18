@@ -597,7 +597,16 @@ Deno.serve(async (req) => {
         if (state.phase !== "waiting") throw new Error("Jogo já iniciado");
         if (numPlayers >= (room?.max_players || 4)) throw new Error("Sala cheia");
 
-        const botName = action.bot_name || `Bot ${numPlayers}`;
+        const BOT_NAMES = [
+          "Magrão", "Jabota", "Xecho", "Teteca", "Codorna",
+          "Linguição", "Mr Musculo", "Valteka", "Zé Bolinha", "Frodão",
+          "Cabeludo", "Lairton e seus teclados", "Big Steve", "Borracha", "Bolinha de Gorfi"
+        ];
+        const usedNames = new Set(players.map((p: any) => p.name));
+        const available = BOT_NAMES.filter(n => !usedNames.has(n));
+        const botName = action.bot_name || (available.length > 0
+          ? available[Math.floor(Math.random() * available.length)]
+          : `Bot ${numPlayers}`);
         const botId = `bot_${crypto.randomUUID().slice(0, 8)}`;
 
         const takenSeats = new Set(players.map((p: any) => p.seat));

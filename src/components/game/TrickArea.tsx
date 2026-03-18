@@ -7,9 +7,10 @@ interface TrickAreaProps {
   players: Player[];
   winnerSeat?: number | null;
   isTrickEnd?: boolean;
+  isMelada?: boolean;
 }
 
-export function TrickArea({ currentTrick, players, winnerSeat, isTrickEnd }: TrickAreaProps) {
+export function TrickArea({ currentTrick, players, winnerSeat, isTrickEnd, isMelada }: TrickAreaProps) {
   const getPlayerName = (playerId: string) => {
     return players.find(p => p.player_id === playerId)?.name || 'Jogador';
   };
@@ -22,8 +23,14 @@ export function TrickArea({ currentTrick, players, winnerSeat, isTrickEnd }: Tri
     <div className="flex flex-col items-center gap-2">
       <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Mesa</h3>
 
-      {isTrickEnd && winnerPlayer && (
-        <p className="text-lg text-primary font-semibold">
+      {isTrickEnd && isMelada && (
+        <p className="text-lg text-destructive font-semibold animate-fade-in">
+          🔄 MELADA! Ninguém ganhou a vaza
+        </p>
+      )}
+
+      {isTrickEnd && winnerPlayer && !isMelada && (
+        <p className="text-lg text-primary font-semibold animate-fade-in">
           🏆 {winnerPlayer.name} ganhou a vaza!
         </p>
       )}
@@ -37,11 +44,11 @@ export function TrickArea({ currentTrick, players, winnerSeat, isTrickEnd }: Tri
             return (
               <div
                 key={i}
-                className={`flex flex-col items-center gap-1 ${
-                  isWinner ? 'ring-2 ring-primary rounded-lg p-1 bg-primary/10' : ''
+                className={`flex flex-col items-center gap-1 transition-all ${
+                  isWinner ? 'ring-2 ring-primary rounded-lg p-1 bg-primary/10 scale-105' : ''
                 }`}
               >
-                <PlayingCard card={tc.card} disabled small />
+                <PlayingCard card={tc.card} disabled small isWinner={isWinner} animateIn />
                 <span className={`text-xs truncate max-w-[60px] ${
                   isWinner ? 'text-primary font-bold' : 'text-muted-foreground'
                 }`}>

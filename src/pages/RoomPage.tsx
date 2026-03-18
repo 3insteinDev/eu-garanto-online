@@ -179,6 +179,7 @@ export default function RoomPage() {
     <GameTable
       roomId={roomId!}
       playerId={playerId}
+      playerName={playerName}
       gameState={gameState}
       players={players}
       onRefresh={fetchState}
