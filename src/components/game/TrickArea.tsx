@@ -50,11 +50,18 @@ export function TrickArea({ currentTrick, players, winnerSeat, isTrickEnd, isMel
                 }`}
               >
                 <PlayingCard card={tc.card} disabled small isWinner={isWinner} animateIn />
-                <span className={`text-xs truncate max-w-[60px] ${
-                  isWinner ? 'text-primary font-bold' : 'text-muted-foreground'
-                }`}>
-                  {getPlayerName(tc.player_id)}
-                </span>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className={`text-xs truncate max-w-[80px] block cursor-default ${
+                      isWinner ? 'text-primary font-bold' : 'text-muted-foreground'
+                    }`}>
+                      {getPlayerName(tc.player_id)}
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    <p>{getPlayerName(tc.player_id)}</p>
+                  </TooltipContent>
+                </Tooltip>
               </div>
             );
           })
