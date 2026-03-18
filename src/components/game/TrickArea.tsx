@@ -21,8 +21,8 @@ export function TrickArea({ currentTrick, players, winnerSeat, isTrickEnd, isMel
     : null;
 
   return (
+    <TooltipProvider delayDuration={300}>
     <div className="flex flex-col items-center gap-2">
-      <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Mesa</h3>
 
       {isTrickEnd && isMelada && (
         <p className="text-lg text-destructive font-semibold animate-fade-in">
