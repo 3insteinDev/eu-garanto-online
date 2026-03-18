@@ -15,9 +15,12 @@ interface PlayingCardProps {
   selected?: boolean;
   small?: boolean;
   faceDown?: boolean;
+  isWinner?: boolean;
+  isManilha?: boolean;
+  animateIn?: boolean;
 }
 
-export function PlayingCard({ card, onClick, disabled, selected, small, faceDown }: PlayingCardProps) {
+export function PlayingCard({ card, onClick, disabled, selected, small, faceDown, isWinner, isManilha, animateIn }: PlayingCardProps) {
   const isRed = card.suit === 'hearts' || card.suit === 'diamonds';
 
   if (faceDown) {
@@ -37,17 +40,25 @@ export function PlayingCard({ card, onClick, disabled, selected, small, faceDown
       onClick={onClick}
       disabled={disabled}
       className={cn(
-        'rounded-lg border-2 flex flex-col items-center justify-between p-1 transition-all',
+        'rounded-lg border-2 flex flex-col items-center justify-between p-1 transition-all relative',
         'bg-card hover:scale-105',
         small ? 'w-10 h-14 text-xs' : 'w-16 h-24 text-sm',
         isRed ? 'text-suit-red' : 'text-foreground',
         selected ? 'border-primary ring-2 ring-primary -translate-y-2' : 'border-border',
         disabled ? 'opacity-50 cursor-not-allowed hover:scale-100' : 'cursor-pointer',
+        isWinner && 'ring-2 ring-primary border-primary shadow-lg shadow-primary/30 scale-105',
+        isManilha && !isWinner && 'ring-1 ring-yellow-500/50 border-yellow-500/40',
+        animateIn && 'animate-scale-in',
       )}
     >
       <span className="font-bold self-start leading-none">{card.rank}</span>
       <span className={cn(small ? 'text-lg' : 'text-2xl')}>{suitSymbol[card.suit]}</span>
       <span className="font-bold self-end leading-none rotate-180">{card.rank}</span>
+      {isManilha && (
+        <span className="absolute -top-1.5 -right-1.5 text-[8px] bg-yellow-500 text-yellow-950 rounded-full w-4 h-4 flex items-center justify-center font-bold leading-none">
+          M
+        </span>
+      )}
     </button>
   );
 }

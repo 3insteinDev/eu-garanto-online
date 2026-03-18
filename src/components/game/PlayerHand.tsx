@@ -7,9 +7,10 @@ interface PlayerHandProps {
   disabled?: boolean;
   selectedCard?: Card | null;
   onSelectCard?: (card: Card | null) => void;
+  manilhaRank?: string | null;
 }
 
-export function PlayerHand({ cards, onPlayCard, disabled, selectedCard, onSelectCard }: PlayerHandProps) {
+export function PlayerHand({ cards, onPlayCard, disabled, selectedCard, onSelectCard, manilhaRank }: PlayerHandProps) {
   const handleClick = (card: Card) => {
     if (disabled) return;
     if (onSelectCard) {
@@ -33,6 +34,7 @@ export function PlayerHand({ cards, onPlayCard, disabled, selectedCard, onSelect
           onClick={() => handleClick(card)}
           disabled={disabled}
           selected={selectedCard?.suit === card.suit && selectedCard?.rank === card.rank}
+          isManilha={!!manilhaRank && card.rank === manilhaRank}
         />
       ))}
     </div>
