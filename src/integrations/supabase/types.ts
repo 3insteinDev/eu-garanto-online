@@ -21,6 +21,8 @@ export type Database = {
           current_trick: Json
           dealer_seat: number
           hands: Json
+          is_paused: boolean
+          pauses_used: Json
           phase: Database["public"]["Enums"]["game_phase"]
           room_id: string
           round_index: number
@@ -28,6 +30,7 @@ export type Database = {
           round_number: number
           round_sequence: Json
           scores: Json
+          settings: Json
           tricks_played: Json
           tricks_won: Json
           trump_card: Json | null
@@ -40,6 +43,8 @@ export type Database = {
           current_trick?: Json
           dealer_seat?: number
           hands?: Json
+          is_paused?: boolean
+          pauses_used?: Json
           phase?: Database["public"]["Enums"]["game_phase"]
           room_id: string
           round_index?: number
@@ -47,6 +52,7 @@ export type Database = {
           round_number?: number
           round_sequence?: Json
           scores?: Json
+          settings?: Json
           tricks_played?: Json
           tricks_won?: Json
           trump_card?: Json | null
@@ -59,6 +65,8 @@ export type Database = {
           current_trick?: Json
           dealer_seat?: number
           hands?: Json
+          is_paused?: boolean
+          pauses_used?: Json
           phase?: Database["public"]["Enums"]["game_phase"]
           room_id?: string
           round_index?: number
@@ -66,6 +74,7 @@ export type Database = {
           round_number?: number
           round_sequence?: Json
           scores?: Json
+          settings?: Json
           tricks_played?: Json
           tricks_won?: Json
           trump_card?: Json | null
