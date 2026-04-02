@@ -185,6 +185,7 @@ export default function RoomPage() {
       onRefresh={fetchState}
       onLeave={handleLeave}
       gameMode={gameMode}
+      hostId={hostId}
     />
   );
 }
