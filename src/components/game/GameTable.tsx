@@ -11,6 +11,7 @@ import { PlayingCard } from './PlayingCard';
 import { RoundFeedback } from './RoundFeedback';
 import { TurnTimer } from './TurnTimer';
 import { ChatPanel } from './ChatPanel';
+import { GameSettingsPanel, type GameSettings } from './GameSettingsPanel';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 
