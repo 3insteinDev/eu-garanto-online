@@ -47,8 +47,8 @@ export function useGameApi() {
   const resumeGame = (roomId: string, playerId: string) =>
     gameAction(roomId, playerId, { type: 'resume_game' });
 
-  const updateSettings = (roomId: string, playerId: string, settings: Record<string, unknown>) =>
-    gameAction(roomId, playerId, { type: 'update_settings', settings });
+  const updateSettings = (roomId: string, playerId: string, settings: object) =>
+    gameAction(roomId, playerId, { type: 'update_settings', settings: settings as Record<string, unknown> });
 
   return { createRoom, joinRoom, getGameState, startGame, placeBid, playCard, addBot, removeBot, nextRound, nextTrick, pauseGame, resumeGame, updateSettings };
 }
