@@ -158,7 +158,7 @@ export default function RoomPage() {
 
           {isHost && (
             <div className="space-y-3">
-              <Button onClick={handleAddBot} disabled={loading || players.length >= 4} variant="secondary" className="w-full">
+              <Button onClick={handleAddBot} disabled={loading || players.length >= 6} variant="secondary" className="w-full">
                 Adicionar Bot 🤖
               </Button>
               <Button onClick={handleStartGame} disabled={loading || players.length < 2} className="w-full text-lg h-12">

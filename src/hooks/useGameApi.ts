@@ -32,11 +32,23 @@ export function useGameApi() {
   const addBot = (roomId: string, playerId: string, botName?: string) =>
     gameAction(roomId, playerId, { type: 'add_bot', bot_name: botName });
 
+  const removeBot = (roomId: string, playerId: string, botId: string) =>
+    gameAction(roomId, playerId, { type: 'remove_bot', bot_id: botId });
+
   const nextRound = (roomId: string, playerId: string) =>
     gameAction(roomId, playerId, { type: 'next_round' });
 
   const nextTrick = (roomId: string, playerId: string) =>
     gameAction(roomId, playerId, { type: 'next_trick' });
 
-  return { createRoom, joinRoom, getGameState, startGame, placeBid, playCard, addBot, nextRound, nextTrick };
+  const pauseGame = (roomId: string, playerId: string) =>
+    gameAction(roomId, playerId, { type: 'pause_game' });
+
+  const resumeGame = (roomId: string, playerId: string) =>
+    gameAction(roomId, playerId, { type: 'resume_game' });
+
+  const updateSettings = (roomId: string, playerId: string, settings: Record<string, unknown>) =>
+    gameAction(roomId, playerId, { type: 'update_settings', settings });
+
+  return { createRoom, joinRoom, getGameState, startGame, placeBid, playCard, addBot, removeBot, nextRound, nextTrick, pauseGame, resumeGame, updateSettings };
 }
