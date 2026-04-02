@@ -27,7 +27,7 @@ interface GameTableProps {
   hostId: string;
 }
 
-export function GameTable({ roomId, playerId, playerName, gameState, players, onRefresh, onLeave, gameMode = 'classic' }: GameTableProps) {
+export function GameTable({ roomId, playerId, playerName, gameState, players, onRefresh, onLeave, gameMode = 'classic', hostId }: GameTableProps) {
   const api = useGameApi();
   const [selectedCard, setSelectedCard] = useState<CardType | null>(null);
   const [loading, setLoading] = useState(false);
