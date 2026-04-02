@@ -173,9 +173,46 @@ export function GameTable({ roomId, playerId, playerName, gameState, players, on
   }
 
   const modeLabel = gameMode === 'manilha' ? '🔥 Manilha' : '🃏 Clássico';
+  const isPaused = (gameState as any).is_paused ?? false;
+  const settings = (gameState as any).settings ?? { turn_timer: 15 };
+  const timerDuration = settings.turn_timer || 0;
+
+  const handleAddBotFromSettings = useCallback(async () => {
+    await api.addBot(roomId, playerId);
+    toast.success('Bot adicionado');
+  }, [roomId, playerId, api]);
+
+  const handleRemoveBotFromSettings = useCallback(async (botId: string) => {
+    await api.removeBot(roomId, playerId, botId);
+    toast.success('Bot removido');
+  }, [roomId, playerId, api]);
+
+  const handleUpdateSettings = useCallback(async (newSettings: GameSettings) => {
+    await api.updateSettings(roomId, playerId, newSettings);
+  }, [roomId, playerId, api]);
+
+  const handlePause = useCallback(async () => {
+    await api.pauseGame(roomId, playerId);
+    toast.info('Jogo pausado');
+  }, [roomId, playerId, api]);
+
+  const handleResume = useCallback(async () => {
+    await api.resumeGame(roomId, playerId);
+    toast.info('Jogo retomado');
+  }, [roomId, playerId, api]);
 
   return (
     <div className="min-h-screen flex flex-col">
+      {/* Pause overlay */}
+      {isPaused && (
+        <div className="fixed inset-0 z-40 bg-background/80 backdrop-blur-sm flex items-center justify-center">
+          <div className="text-center space-y-4">
+            <p className="text-4xl text-primary">⏸ JOGO PAUSADO</p>
+            <p className="text-muted-foreground">Aguardando retomada...</p>
+          </div>
+        </div>
+      )}
+
       {/* Round result overlay */}
       {showRoundResult && roundResultDataRef.current && (
         <RoundFeedback
@@ -213,6 +250,18 @@ export function GameTable({ roomId, playerId, playerName, gameState, players, on
           <Button variant="ghost" size="sm" onClick={() => setShowHistory(!showHistory)}>
             {showHistory ? 'Mesa' : 'Histórico'}
           </Button>
+          <GameSettingsPanel
+            roomId={roomId}
+            playerId={playerId}
+            hostId={hostId}
+            players={players}
+            gameState={gameState}
+            onAddBot={handleAddBotFromSettings}
+            onRemoveBot={handleRemoveBotFromSettings}
+            onUpdateSettings={handleUpdateSettings}
+            onPause={handlePause}
+            onResume={handleResume}
+          />
           <Button variant="ghost" size="sm" onClick={onLeave} className="text-muted-foreground">
             Sair
           </Button>
