@@ -24,6 +24,7 @@ interface GameTableProps {
   onRefresh: () => void;
   onLeave: () => void;
   gameMode?: GameMode;
+  hostId: string;
 }
 
 export function GameTable({ roomId, playerId, playerName, gameState, players, onRefresh, onLeave, gameMode = 'classic' }: GameTableProps) {
