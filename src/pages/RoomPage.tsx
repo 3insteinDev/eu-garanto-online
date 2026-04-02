@@ -137,7 +137,7 @@ export default function RoomPage() {
           <Card>
             <CardHeader>
               <CardTitle className="text-xl text-primary">
-                Jogadores ({players.length}/4)
+                Jogadores ({players.length}/6)
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
@@ -158,7 +158,7 @@ export default function RoomPage() {
 
           {isHost && (
             <div className="space-y-3">
-              <Button onClick={handleAddBot} disabled={loading || players.length >= 4} variant="secondary" className="w-full">
+              <Button onClick={handleAddBot} disabled={loading || players.length >= 6} variant="secondary" className="w-full">
                 Adicionar Bot 🤖
               </Button>
               <Button onClick={handleStartGame} disabled={loading || players.length < 2} className="w-full text-lg h-12">
@@ -185,6 +185,7 @@ export default function RoomPage() {
       onRefresh={fetchState}
       onLeave={handleLeave}
       gameMode={gameMode}
+      hostId={hostId}
     />
   );
 }

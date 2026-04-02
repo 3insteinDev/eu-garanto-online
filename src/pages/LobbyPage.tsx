@@ -28,7 +28,7 @@ export default function LobbyPage() {
     }
     setLoading(true);
     try {
-      const data = await api.createRoom(playerId, playerName.trim(), 4, gameMode);
+      const data = await api.createRoom(playerId, playerName.trim(), 6, gameMode);
       navigate(`/room/${data.room.id}`);
     } catch (e: any) {
       toast.error(e.message || 'Erro ao criar sala');
