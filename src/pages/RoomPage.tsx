@@ -137,7 +137,7 @@ export default function RoomPage() {
           <Card>
             <CardHeader>
               <CardTitle className="text-xl text-primary">
-                Jogadores ({players.length}/4)
+                Jogadores ({players.length}/6)
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
