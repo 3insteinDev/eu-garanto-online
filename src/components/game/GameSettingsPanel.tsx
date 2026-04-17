@@ -158,7 +158,7 @@ export function GameSettingsPanel({
             </div>
           )}
 
-          {/* Bot management */}
+          {/* Bot management - only allowed during waiting phase */}
           <div className="space-y-3">
             <h4 className="text-sm font-semibold uppercase text-muted-foreground">Bots</h4>
             {bots.length === 0 ? (
@@ -170,13 +170,14 @@ export function GameSettingsPanel({
                     <span className="text-sm flex items-center gap-1">
                       <Bot className="h-3.5 w-3.5" /> {bot.name}
                     </span>
-                    {isHost && (
+                    {isHost && isWaiting && (
                       <Button
                         size="icon"
                         variant="ghost"
                         className="h-7 w-7 text-destructive hover:text-destructive"
                         onClick={() => handleRemoveBot(bot.player_id)}
                         disabled={loading}
+                        title="Remover bot"
                       >
                         <Minus className="h-4 w-4" />
                       </Button>
@@ -185,7 +186,7 @@ export function GameSettingsPanel({
                 ))}
               </div>
             )}
-            {isHost && players.length < 6 && (
+            {isHost && isWaiting && players.length < 6 && (
               <Button
                 size="sm"
                 variant="outline"
@@ -195,6 +196,11 @@ export function GameSettingsPanel({
               >
                 <Plus className="h-4 w-4 mr-1" /> Adicionar Bot
               </Button>
+            )}
+            {isHost && !isWaiting && !isGameOver && (
+              <p className="text-xs text-muted-foreground italic">
+                Bots só podem ser adicionados ou removidos antes da partida iniciar.
+              </p>
             )}
             <Separator />
           </div>
