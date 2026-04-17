@@ -356,9 +356,15 @@ Deno.serve(async (req) => {
 
     const { room_id, player_id, action } = await req.json();
 
-    if (!room_id || !action) {
+    if (!room_id || !action || !action.type) {
       return new Response(
-        JSON.stringify({ error: "room_id and action are required" }),
+        JSON.stringify({ error: "Requisição inválida: room_id e action são obrigatórios" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    if (!player_id) {
+      return new Response(
+        JSON.stringify({ error: "Requisição inválida: player_id é obrigatório" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -368,7 +374,12 @@ Deno.serve(async (req) => {
       .select("*")
       .eq("room_id", room_id)
       .single();
-    if (stateError || !state) throw new Error("Game state not found");
+    if (stateError || !state) {
+      return new Response(
+        JSON.stringify({ error: "Estado da partida não encontrado" }),
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     const stateUpdatedAt = state.updated_at;
 
@@ -377,7 +388,7 @@ Deno.serve(async (req) => {
       .select("*")
       .eq("room_id", room_id)
       .order("seat", { ascending: true });
-    if (playersError) throw playersError;
+    if (playersError) throw new Error("Erro ao carregar jogadores da sala");
 
     const { data: room } = await supabase
       .from("rooms")
@@ -395,15 +406,16 @@ Deno.serve(async (req) => {
 
     // Check if game is paused (block gameplay actions)
     if (state.is_paused && !["pause_game", "resume_game", "update_settings"].includes(action.type)) {
-      throw new Error("Jogo está pausado");
+      throw new ValidationError("Jogo está pausado, retome para continuar");
     }
 
     switch (action.type) {
       // ============ START GAME ============
       case "start_game": {
-        if (numPlayers < 2) throw new Error("Mínimo 2 jogadores");
-        if (numPlayers > 6) throw new Error("Máximo 6 jogadores");
-        if (state.phase !== "waiting") throw new Error("Jogo já iniciado");
+        if (numPlayers < 2) throw new ValidationError("É necessário ao menos 2 jogadores para iniciar");
+        if (numPlayers > 6) throw new ValidationError("Máximo de 6 jogadores por partida");
+        if (state.phase !== "waiting") throw new ValidationError("A partida já foi iniciada");
+        if (room && room.host_id !== player_id) throw new ValidationError("Apenas o anfitrião pode iniciar a partida");
 
         const roundSequence = generateRoundSequence(numPlayers, gameMode);
         const numCards = roundSequence[0];
