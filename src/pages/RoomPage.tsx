@@ -109,6 +109,19 @@ export default function RoomPage() {
     }
   };
 
+  const handleRemoveBot = async (botId: string) => {
+    if (!roomId) return;
+    setLoading(true);
+    try {
+      await api.removeBot(roomId, playerId, botId);
+      toast.success('Bot removido');
+    } catch (e: any) {
+      toast.error(e.message || 'Erro ao remover bot');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleLeave = () => {
     setActiveRoom(null);
     navigate('/');
@@ -147,9 +160,20 @@ export default function RoomPage() {
                     {p.name}
                     {p.player_id === playerId && ' (você)'}
                   </span>
-                  <div className="flex gap-2 text-xs text-muted-foreground">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
                     {p.is_bot && <span>🤖</span>}
                     {p.player_id === hostId && <span>👑</span>}
+                    {isHost && p.is_bot && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 px-2 text-destructive hover:text-destructive hover:bg-destructive/10"
+                        onClick={() => handleRemoveBot(p.player_id)}
+                        disabled={loading}
+                      >
+                        Remover
+                      </Button>
+                    )}
                   </div>
                 </div>
               ))}
