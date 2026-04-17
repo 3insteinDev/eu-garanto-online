@@ -459,23 +459,31 @@ Deno.serve(async (req) => {
 
       // ============ PLACE BID ============
       case "place_bid": {
-        if (state.phase !== "bidding") throw new Error("Não é fase de apostas");
+        if (state.phase !== "bidding") throw new ValidationError("Não é fase de apostas");
         const currentPlayer = playerBySeat[state.current_player_seat];
         if (!currentPlayer || currentPlayer.player_id !== player_id) {
-          throw new Error("Não é sua vez");
+          throw new ValidationError("Ação inválida: não é seu turno");
         }
 
         const bid = action.bid;
         const numCards = state.round_num_cards;
 
-        if (bid < 0 || bid > numCards) throw new Error(`Aposta inválida (0-${numCards})`);
+        if (typeof bid !== "number" || !Number.isInteger(bid)) {
+          throw new ValidationError("Aposta inválida: deve ser um número inteiro");
+        }
+        if (bid < 0 || bid > numCards) {
+          throw new ValidationError(`Aposta inválida: deve estar entre 0 e ${numCards}`);
+        }
+        if (state.bids && state.bids[player_id] !== undefined) {
+          throw new ValidationError("Você já fez sua aposta nesta rodada");
+        }
 
         const bids = { ...state.bids };
         const dealerPlayer = playerBySeat[state.dealer_seat];
         if (currentPlayer.player_id === dealerPlayer.player_id) {
           const totalBids = Object.values(bids).reduce((s: number, b: any) => s + (b as number), 0);
           if (totalBids + bid === numCards) {
-            throw new Error(`Dealer não pode apostar ${bid} (soma = total de vazas)`);
+            throw new ValidationError(`Como dealer, você não pode apostar ${bid} (soma fecharia o total de vazas)`);
           }
         }
 
@@ -494,24 +502,27 @@ Deno.serve(async (req) => {
 
       // ============ PLAY CARD ============
       case "play_card": {
-        if (state.phase !== "playing") throw new Error("Não é fase de jogo");
+        if (state.phase !== "playing") throw new ValidationError("Não é fase de jogo");
         const currentPlayer = playerBySeat[state.current_player_seat];
         if (!currentPlayer || currentPlayer.player_id !== player_id) {
-          throw new Error("Não é sua vez");
+          throw new ValidationError("Ação inválida: não é seu turno");
         }
 
         const card = action.card as Card;
+        if (!card || !card.suit || !card.rank) {
+          throw new ValidationError("Carta inválida: dados incompletos");
+        }
         const hand: Card[] = state.hands[player_id] || [];
 
         const cardIdx = hand.findIndex((c: Card) => c.suit === card.suit && c.rank === card.rank);
-        if (cardIdx === -1) throw new Error("Carta não está na sua mão");
+        if (cardIdx === -1) throw new ValidationError("Carta não está na sua mão");
 
         const trick: TrickCard[] = state.current_trick || [];
         if (gameMode !== "manilha" && trick.length > 0) {
           const leadSuit = trick[0].card.suit;
           const hasLeadSuit = hand.some((c: Card) => c.suit === leadSuit);
           if (hasLeadSuit && card.suit !== leadSuit) {
-            throw new Error(`Deve seguir o naipe ${leadSuit}`);
+            throw new ValidationError(`Você deve seguir o naipe (${leadSuit})`);
           }
         }
 
@@ -552,7 +563,7 @@ Deno.serve(async (req) => {
 
       // ============ NEXT TRICK ============
       case "next_trick": {
-        if (state.phase !== "trick_end") throw new Error("Não é fase de fim de vaza");
+        if (state.phase !== "trick_end") throw new ValidationError("Não é fase de fim de vaza");
 
         const trickWinnerSeat = state.current_player_seat;
         const completedTrick = state.current_trick || [];
