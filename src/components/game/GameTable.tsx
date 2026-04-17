@@ -64,9 +64,10 @@ export function GameTable({ roomId, playerId, playerName, gameState, players, on
     }
   }
 
-  // Auto-advance trick_end after 2 seconds
+  // Auto-advance trick_end after 2 seconds (skip if paused)
+  const isPausedFlag = (gameState as any).is_paused ?? false;
   useEffect(() => {
-    if (gameState.phase !== 'trick_end') {
+    if (gameState.phase !== 'trick_end' || isPausedFlag) {
       nextTrickCalledRef.current = false;
       return;
     }
@@ -80,7 +81,7 @@ export function GameTable({ roomId, playerId, playerName, gameState, players, on
       }
     }, 2000);
     return () => clearTimeout(timer);
-  }, [gameState.phase, roomId, playerId, api]);
+  }, [gameState.phase, roomId, playerId, api, isPausedFlag]);
 
   // Detect phase transition to round_end -> show overlay
   useEffect(() => {
@@ -137,8 +138,9 @@ export function GameTable({ roomId, playerId, playerName, gameState, players, on
     }
   };
 
-  // Timer auto-action: play random card or bid 0
+  // Timer auto-action: play random card or bid 0 (skip if paused)
   const handleTimeout = useCallback(async () => {
+    if ((gameState as any).is_paused) return;
     if (gameState.phase === 'playing' && isMyTurn) {
       const hand = gameState.my_hand || [];
       if (hand.length > 0) {

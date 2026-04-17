@@ -786,8 +786,8 @@ Deno.serve(async (req) => {
       throw new ValidationError("Estado desatualizado, tente novamente");
     }
 
-    // Process bot turns automatically
-    if (newState.phase === "bidding" || newState.phase === "playing" || newState.phase === "trick_end") {
+    // Process bot turns automatically (skip if paused)
+    if (!newState.is_paused && (newState.phase === "bidding" || newState.phase === "playing" || newState.phase === "trick_end")) {
       await processBotTurns(supabase, room_id, newState, players, gameMode);
     }
 
