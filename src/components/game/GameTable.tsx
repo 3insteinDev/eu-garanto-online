@@ -351,7 +351,7 @@ export function GameTable({ roomId, playerId, playerName, gameState, players, on
             )}
 
             {/* Turn timer */}
-            {isMyTurn && timerDuration > 0 && (
+            {isMyTurn && timerDuration > 0 && !isPaused && (
               <div className="flex justify-center">
                 <TurnTimer
                   isMyTurn={isMyTurn}
