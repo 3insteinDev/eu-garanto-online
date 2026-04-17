@@ -3,7 +3,30 @@ import type { Card, GameMode } from '@/types/game';
 
 async function invoke(fn: string, body: Record<string, unknown>) {
   const { data, error } = await supabase.functions.invoke(fn, { body });
-  if (error) throw new Error(error.message || 'Erro na requisição');
+  if (error) {
+    // Try to extract structured error message from edge function response body
+    let serverMessage: string | null = null;
+    try {
+      const ctx = (error as any).context;
+      if (ctx && typeof ctx.json === 'function') {
+        const parsed = await ctx.json();
+        serverMessage = parsed?.error || null;
+      } else if (ctx && typeof ctx.text === 'function') {
+        const txt = await ctx.text();
+        try {
+          serverMessage = JSON.parse(txt)?.error || txt;
+        } catch {
+          serverMessage = txt;
+        }
+      }
+    } catch {
+      // ignore parse errors
+    }
+    throw new Error(serverMessage || error.message || 'Erro na requisição');
+  }
+  if (data && typeof data === 'object' && 'error' in data && (data as any).error) {
+    throw new Error(String((data as any).error));
+  }
   return data;
 }
 
