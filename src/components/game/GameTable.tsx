@@ -206,9 +206,22 @@ export function GameTable({ roomId, playerId, playerName, gameState, players, on
       {/* Pause overlay */}
       {isPaused && (
         <div className="fixed inset-0 z-40 bg-background/80 backdrop-blur-sm flex items-center justify-center">
-          <div className="text-center space-y-4">
+          <div className="text-center space-y-4 p-6 rounded-lg border border-border bg-card/90 shadow-xl">
             <p className="text-4xl text-primary">⏸ JOGO PAUSADO</p>
-            <p className="text-muted-foreground">Aguardando retomada...</p>
+            <p className="text-muted-foreground">Clique abaixo para retomar a partida</p>
+            <Button
+              size="lg"
+              onClick={async () => {
+                try {
+                  await handleResume();
+                } catch (e: any) {
+                  toast.error(e.message || 'Erro ao retomar');
+                }
+              }}
+              className="text-lg px-8"
+            >
+              ▶ Retomar Jogo
+            </Button>
           </div>
         </div>
       )}
