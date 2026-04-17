@@ -717,16 +717,17 @@ Deno.serve(async (req) => {
       // ============ PAUSE GAME ============
       case "pause_game": {
         if (state.phase === "waiting" || state.phase === "game_over") {
-          throw new Error("Não é possível pausar agora");
+          throw new ValidationError("Não é possível pausar agora");
         }
-        if (state.is_paused) throw new Error("Jogo já está pausado");
+        if (state.is_paused) throw new ValidationError("O jogo já está pausado");
 
         const settings = state.settings || { max_pauses: 2 };
         const pausesUsed = { ...(state.pauses_used || {}) };
         const playerPauses = pausesUsed[player_id] || 0;
+        const maxPauses = settings.max_pauses ?? 2;
 
-        if (playerPauses >= (settings.max_pauses || 2)) {
-          throw new Error("Limite de pausas atingido");
+        if (playerPauses >= maxPauses) {
+          throw new ValidationError(`Limite de pausas atingido (${maxPauses})`);
         }
 
         pausesUsed[player_id] = playerPauses + 1;
@@ -737,7 +738,7 @@ Deno.serve(async (req) => {
 
       // ============ RESUME GAME ============
       case "resume_game": {
-        if (!state.is_paused) throw new Error("Jogo não está pausado");
+        if (!state.is_paused) throw new ValidationError("O jogo não está pausado");
         newState.is_paused = false;
         break;
       }
@@ -782,7 +783,7 @@ Deno.serve(async (req) => {
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      throw new Error("Estado desatualizado, tente novamente");
+      throw new ValidationError("Estado desatualizado, tente novamente");
     }
 
     // Process bot turns automatically
