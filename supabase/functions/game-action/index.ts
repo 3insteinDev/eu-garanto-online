@@ -604,7 +604,7 @@ Deno.serve(async (req) => {
 
       // ============ NEXT ROUND ============
       case "next_round": {
-        if (state.phase !== "round_end") throw new Error("Rodada não terminou");
+        if (state.phase !== "round_end") throw new ValidationError("A rodada ainda não terminou");
 
         const roundSeq: number[] = state.round_sequence;
         const nextIdx = state.round_index + 1;
@@ -651,11 +651,17 @@ Deno.serve(async (req) => {
       // ============ ADD BOT ============
       case "add_bot": {
         // Allow adding bots during waiting or in_progress (host only)
-        if (state.phase === "game_over") throw new Error("Jogo encerrado");
-        if (numPlayers >= 6) throw new Error("Sala cheia (máximo 6)");
+        if (state.phase === "game_over") throw new ValidationError("A partida já foi encerrada");
+        if (numPlayers >= 6) throw new ValidationError("Sala cheia: máximo de 6 jogadores");
 
         // Verify host
-        if (room && room.host_id !== player_id) throw new Error("Apenas o host pode adicionar bots");
+        if (room && room.host_id !== player_id) {
+          throw new ValidationError("Apenas o anfitrião pode adicionar bots");
+        }
+        // Bots can only be added before the game starts
+        if (state.phase !== "waiting") {
+          throw new ValidationError("Não é possível adicionar bots durante a partida");
+        }
 
         const BOT_NAMES = [
           "Magrão", "Jabota", "Xecho", "Teteca", "Codorna",
