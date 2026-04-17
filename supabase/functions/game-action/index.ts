@@ -657,15 +657,19 @@ Deno.serve(async (req) => {
 
       // ============ REMOVE BOT ============
       case "remove_bot": {
-        if (room && room.host_id !== player_id) throw new Error("Apenas o host pode remover bots");
+        if (room && room.host_id !== player_id) {
+          throw new ValidationError("Apenas o anfitrião pode remover bots");
+        }
         const botPlayerId = action.bot_id;
-        if (!botPlayerId) throw new Error("bot_id é obrigatório");
-
-        const botPlayer = players.find((p: any) => p.player_id === botPlayerId && p.is_bot);
-        if (!botPlayer) throw new Error("Bot não encontrado");
+        if (!botPlayerId) throw new ValidationError("ID do bot é obrigatório");
 
         // Only allow removal during waiting phase to avoid breaking game flow
-        if (state.phase !== "waiting") throw new Error("Só pode remover bots antes do jogo iniciar");
+        if (state.phase !== "waiting") {
+          throw new ValidationError("Não é possível remover bots durante a partida");
+        }
+
+        const botPlayer = players.find((p: any) => p.player_id === botPlayerId && p.is_bot);
+        if (!botPlayer) throw new ValidationError("Bot não encontrado");
 
         await supabase.from("room_players").delete().eq("player_id", botPlayerId).eq("room_id", room_id);
         response.removed = botPlayerId;
@@ -702,17 +706,28 @@ Deno.serve(async (req) => {
 
       // ============ UPDATE SETTINGS ============
       case "update_settings": {
-        if (room && room.host_id !== player_id) throw new Error("Apenas o host pode alterar configurações");
-        const newSettings = action.settings || {};
-        newState.settings = {
-          ...(state.settings || {}),
-          ...newSettings,
-        };
+        if (room && room.host_id !== player_id) {
+          throw new ValidationError("Apenas o anfitrião pode alterar configurações");
+        }
+        const incoming = action.settings || {};
+        const merged = { ...(state.settings || {}), ...incoming };
+
+        // Validate ranges
+        if (typeof merged.turn_timer !== "number" || merged.turn_timer < 0 || merged.turn_timer > 300) {
+          throw new ValidationError("Configuração inválida: tempo de turno deve estar entre 0 e 300 segundos");
+        }
+        if (typeof merged.max_pauses !== "number" || merged.max_pauses < 0 || merged.max_pauses > 10) {
+          throw new ValidationError("Configuração inválida: limite de pausas deve estar entre 0 e 10");
+        }
+        if (typeof merged.pause_duration !== "number" || merged.pause_duration < 5 || merged.pause_duration > 600) {
+          throw new ValidationError("Configuração inválida: duração da pausa deve estar entre 5 e 600 segundos");
+        }
+        newState.settings = merged;
         break;
       }
 
       default:
-        throw new Error(`Unknown action: ${action.type}`);
+        throw new ValidationError(`Ação desconhecida: ${action.type}`);
     }
 
     // Save state with optimistic locking
