@@ -6,6 +6,15 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+// Custom error class for validation/business-logic errors (returns 400)
+class ValidationError extends Error {
+  status = 400;
+  constructor(message: string) {
+    super(message);
+    this.name = "ValidationError";
+  }
+}
+
 // ====== Card Types & Logic ======
 
 type Suit = "hearts" | "diamonds" | "clubs" | "spades";
@@ -347,9 +356,15 @@ Deno.serve(async (req) => {
 
     const { room_id, player_id, action } = await req.json();
 
-    if (!room_id || !action) {
+    if (!room_id || !action || !action.type) {
       return new Response(
-        JSON.stringify({ error: "room_id and action are required" }),
+        JSON.stringify({ error: "Requisição inválida: room_id e action são obrigatórios" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    if (!player_id) {
+      return new Response(
+        JSON.stringify({ error: "Requisição inválida: player_id é obrigatório" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -359,7 +374,12 @@ Deno.serve(async (req) => {
       .select("*")
       .eq("room_id", room_id)
       .single();
-    if (stateError || !state) throw new Error("Game state not found");
+    if (stateError || !state) {
+      return new Response(
+        JSON.stringify({ error: "Estado da partida não encontrado" }),
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     const stateUpdatedAt = state.updated_at;
 
@@ -368,7 +388,7 @@ Deno.serve(async (req) => {
       .select("*")
       .eq("room_id", room_id)
       .order("seat", { ascending: true });
-    if (playersError) throw playersError;
+    if (playersError) throw new Error("Erro ao carregar jogadores da sala");
 
     const { data: room } = await supabase
       .from("rooms")
@@ -386,15 +406,16 @@ Deno.serve(async (req) => {
 
     // Check if game is paused (block gameplay actions)
     if (state.is_paused && !["pause_game", "resume_game", "update_settings"].includes(action.type)) {
-      throw new Error("Jogo está pausado");
+      throw new ValidationError("Jogo está pausado, retome para continuar");
     }
 
     switch (action.type) {
       // ============ START GAME ============
       case "start_game": {
-        if (numPlayers < 2) throw new Error("Mínimo 2 jogadores");
-        if (numPlayers > 6) throw new Error("Máximo 6 jogadores");
-        if (state.phase !== "waiting") throw new Error("Jogo já iniciado");
+        if (numPlayers < 2) throw new ValidationError("É necessário ao menos 2 jogadores para iniciar");
+        if (numPlayers > 6) throw new ValidationError("Máximo de 6 jogadores por partida");
+        if (state.phase !== "waiting") throw new ValidationError("A partida já foi iniciada");
+        if (room && room.host_id !== player_id) throw new ValidationError("Apenas o anfitrião pode iniciar a partida");
 
         const roundSequence = generateRoundSequence(numPlayers, gameMode);
         const numCards = roundSequence[0];
@@ -438,23 +459,31 @@ Deno.serve(async (req) => {
 
       // ============ PLACE BID ============
       case "place_bid": {
-        if (state.phase !== "bidding") throw new Error("Não é fase de apostas");
+        if (state.phase !== "bidding") throw new ValidationError("Não é fase de apostas");
         const currentPlayer = playerBySeat[state.current_player_seat];
         if (!currentPlayer || currentPlayer.player_id !== player_id) {
-          throw new Error("Não é sua vez");
+          throw new ValidationError("Ação inválida: não é seu turno");
         }
 
         const bid = action.bid;
         const numCards = state.round_num_cards;
 
-        if (bid < 0 || bid > numCards) throw new Error(`Aposta inválida (0-${numCards})`);
+        if (typeof bid !== "number" || !Number.isInteger(bid)) {
+          throw new ValidationError("Aposta inválida: deve ser um número inteiro");
+        }
+        if (bid < 0 || bid > numCards) {
+          throw new ValidationError(`Aposta inválida: deve estar entre 0 e ${numCards}`);
+        }
+        if (state.bids && state.bids[player_id] !== undefined) {
+          throw new ValidationError("Você já fez sua aposta nesta rodada");
+        }
 
         const bids = { ...state.bids };
         const dealerPlayer = playerBySeat[state.dealer_seat];
         if (currentPlayer.player_id === dealerPlayer.player_id) {
           const totalBids = Object.values(bids).reduce((s: number, b: any) => s + (b as number), 0);
           if (totalBids + bid === numCards) {
-            throw new Error(`Dealer não pode apostar ${bid} (soma = total de vazas)`);
+            throw new ValidationError(`Como dealer, você não pode apostar ${bid} (soma fecharia o total de vazas)`);
           }
         }
 
@@ -473,24 +502,27 @@ Deno.serve(async (req) => {
 
       // ============ PLAY CARD ============
       case "play_card": {
-        if (state.phase !== "playing") throw new Error("Não é fase de jogo");
+        if (state.phase !== "playing") throw new ValidationError("Não é fase de jogo");
         const currentPlayer = playerBySeat[state.current_player_seat];
         if (!currentPlayer || currentPlayer.player_id !== player_id) {
-          throw new Error("Não é sua vez");
+          throw new ValidationError("Ação inválida: não é seu turno");
         }
 
         const card = action.card as Card;
+        if (!card || !card.suit || !card.rank) {
+          throw new ValidationError("Carta inválida: dados incompletos");
+        }
         const hand: Card[] = state.hands[player_id] || [];
 
         const cardIdx = hand.findIndex((c: Card) => c.suit === card.suit && c.rank === card.rank);
-        if (cardIdx === -1) throw new Error("Carta não está na sua mão");
+        if (cardIdx === -1) throw new ValidationError("Carta não está na sua mão");
 
         const trick: TrickCard[] = state.current_trick || [];
         if (gameMode !== "manilha" && trick.length > 0) {
           const leadSuit = trick[0].card.suit;
           const hasLeadSuit = hand.some((c: Card) => c.suit === leadSuit);
           if (hasLeadSuit && card.suit !== leadSuit) {
-            throw new Error(`Deve seguir o naipe ${leadSuit}`);
+            throw new ValidationError(`Você deve seguir o naipe (${leadSuit})`);
           }
         }
 
@@ -531,7 +563,7 @@ Deno.serve(async (req) => {
 
       // ============ NEXT TRICK ============
       case "next_trick": {
-        if (state.phase !== "trick_end") throw new Error("Não é fase de fim de vaza");
+        if (state.phase !== "trick_end") throw new ValidationError("Não é fase de fim de vaza");
 
         const trickWinnerSeat = state.current_player_seat;
         const completedTrick = state.current_trick || [];
@@ -572,7 +604,7 @@ Deno.serve(async (req) => {
 
       // ============ NEXT ROUND ============
       case "next_round": {
-        if (state.phase !== "round_end") throw new Error("Rodada não terminou");
+        if (state.phase !== "round_end") throw new ValidationError("A rodada ainda não terminou");
 
         const roundSeq: number[] = state.round_sequence;
         const nextIdx = state.round_index + 1;
@@ -619,11 +651,17 @@ Deno.serve(async (req) => {
       // ============ ADD BOT ============
       case "add_bot": {
         // Allow adding bots during waiting or in_progress (host only)
-        if (state.phase === "game_over") throw new Error("Jogo encerrado");
-        if (numPlayers >= 6) throw new Error("Sala cheia (máximo 6)");
+        if (state.phase === "game_over") throw new ValidationError("A partida já foi encerrada");
+        if (numPlayers >= 6) throw new ValidationError("Sala cheia: máximo de 6 jogadores");
 
         // Verify host
-        if (room && room.host_id !== player_id) throw new Error("Apenas o host pode adicionar bots");
+        if (room && room.host_id !== player_id) {
+          throw new ValidationError("Apenas o anfitrião pode adicionar bots");
+        }
+        // Bots can only be added before the game starts
+        if (state.phase !== "waiting") {
+          throw new ValidationError("Não é possível adicionar bots durante a partida");
+        }
 
         const BOT_NAMES = [
           "Magrão", "Jabota", "Xecho", "Teteca", "Codorna",
@@ -657,15 +695,19 @@ Deno.serve(async (req) => {
 
       // ============ REMOVE BOT ============
       case "remove_bot": {
-        if (room && room.host_id !== player_id) throw new Error("Apenas o host pode remover bots");
+        if (room && room.host_id !== player_id) {
+          throw new ValidationError("Apenas o anfitrião pode remover bots");
+        }
         const botPlayerId = action.bot_id;
-        if (!botPlayerId) throw new Error("bot_id é obrigatório");
-
-        const botPlayer = players.find((p: any) => p.player_id === botPlayerId && p.is_bot);
-        if (!botPlayer) throw new Error("Bot não encontrado");
+        if (!botPlayerId) throw new ValidationError("ID do bot é obrigatório");
 
         // Only allow removal during waiting phase to avoid breaking game flow
-        if (state.phase !== "waiting") throw new Error("Só pode remover bots antes do jogo iniciar");
+        if (state.phase !== "waiting") {
+          throw new ValidationError("Não é possível remover bots durante a partida");
+        }
+
+        const botPlayer = players.find((p: any) => p.player_id === botPlayerId && p.is_bot);
+        if (!botPlayer) throw new ValidationError("Bot não encontrado");
 
         await supabase.from("room_players").delete().eq("player_id", botPlayerId).eq("room_id", room_id);
         response.removed = botPlayerId;
@@ -675,16 +717,17 @@ Deno.serve(async (req) => {
       // ============ PAUSE GAME ============
       case "pause_game": {
         if (state.phase === "waiting" || state.phase === "game_over") {
-          throw new Error("Não é possível pausar agora");
+          throw new ValidationError("Não é possível pausar agora");
         }
-        if (state.is_paused) throw new Error("Jogo já está pausado");
+        if (state.is_paused) throw new ValidationError("O jogo já está pausado");
 
         const settings = state.settings || { max_pauses: 2 };
         const pausesUsed = { ...(state.pauses_used || {}) };
         const playerPauses = pausesUsed[player_id] || 0;
+        const maxPauses = settings.max_pauses ?? 2;
 
-        if (playerPauses >= (settings.max_pauses || 2)) {
-          throw new Error("Limite de pausas atingido");
+        if (playerPauses >= maxPauses) {
+          throw new ValidationError(`Limite de pausas atingido (${maxPauses})`);
         }
 
         pausesUsed[player_id] = playerPauses + 1;
@@ -695,24 +738,35 @@ Deno.serve(async (req) => {
 
       // ============ RESUME GAME ============
       case "resume_game": {
-        if (!state.is_paused) throw new Error("Jogo não está pausado");
+        if (!state.is_paused) throw new ValidationError("O jogo não está pausado");
         newState.is_paused = false;
         break;
       }
 
       // ============ UPDATE SETTINGS ============
       case "update_settings": {
-        if (room && room.host_id !== player_id) throw new Error("Apenas o host pode alterar configurações");
-        const newSettings = action.settings || {};
-        newState.settings = {
-          ...(state.settings || {}),
-          ...newSettings,
-        };
+        if (room && room.host_id !== player_id) {
+          throw new ValidationError("Apenas o anfitrião pode alterar configurações");
+        }
+        const incoming = action.settings || {};
+        const merged = { ...(state.settings || {}), ...incoming };
+
+        // Validate ranges
+        if (typeof merged.turn_timer !== "number" || merged.turn_timer < 0 || merged.turn_timer > 300) {
+          throw new ValidationError("Configuração inválida: tempo de turno deve estar entre 0 e 300 segundos");
+        }
+        if (typeof merged.max_pauses !== "number" || merged.max_pauses < 0 || merged.max_pauses > 10) {
+          throw new ValidationError("Configuração inválida: limite de pausas deve estar entre 0 e 10");
+        }
+        if (typeof merged.pause_duration !== "number" || merged.pause_duration < 5 || merged.pause_duration > 600) {
+          throw new ValidationError("Configuração inválida: duração da pausa deve estar entre 5 e 600 segundos");
+        }
+        newState.settings = merged;
         break;
       }
 
       default:
-        throw new Error(`Unknown action: ${action.type}`);
+        throw new ValidationError(`Ação desconhecida: ${action.type}`);
     }
 
     // Save state with optimistic locking
@@ -729,7 +783,7 @@ Deno.serve(async (req) => {
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      throw new Error("Estado desatualizado, tente novamente");
+      throw new ValidationError("Estado desatualizado, tente novamente");
     }
 
     // Process bot turns automatically
@@ -751,9 +805,15 @@ Deno.serve(async (req) => {
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
+    const isValidation = error instanceof ValidationError;
+    const status = isValidation ? 400 : 500;
+    const message = (error as Error)?.message || "Erro inesperado ao processar a jogada, tente novamente";
+    if (!isValidation) {
+      console.error("[game-action] Erro inesperado:", error);
+    }
     return new Response(
-      JSON.stringify({ error: error.message }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      JSON.stringify({ error: message, code: isValidation ? "validation_error" : "internal_error" }),
+      { status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });
