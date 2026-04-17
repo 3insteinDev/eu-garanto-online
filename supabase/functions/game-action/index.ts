@@ -6,6 +6,15 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+// Custom error class for validation/business-logic errors (returns 400)
+class ValidationError extends Error {
+  status = 400;
+  constructor(message: string) {
+    super(message);
+    this.name = "ValidationError";
+  }
+}
+
 // ====== Card Types & Logic ======
 
 type Suit = "hearts" | "diamonds" | "clubs" | "spades";
