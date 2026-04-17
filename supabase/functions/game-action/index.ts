@@ -805,9 +805,15 @@ Deno.serve(async (req) => {
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
+    const isValidation = error instanceof ValidationError;
+    const status = isValidation ? 400 : 500;
+    const message = (error as Error)?.message || "Erro inesperado ao processar a jogada, tente novamente";
+    if (!isValidation) {
+      console.error("[game-action] Erro inesperado:", error);
+    }
     return new Response(
-      JSON.stringify({ error: error.message }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      JSON.stringify({ error: message, code: isValidation ? "validation_error" : "internal_error" }),
+      { status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });
